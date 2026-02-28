@@ -11,10 +11,13 @@ from converter.utils import (
     validate_output_path,
     validate_param_range,
     get_output_path,
+    get_export_format,
     SUPPORTED_INPUT_FORMATS,
     SUPPORTED_OUTPUT_FORMATS,
+    FORMAT_EXPORT_MAP,
 )
 from converter.core import convert_to_8d
+from converter.printer import OutputPrinter
 
 # Test Constants
 SAMPLE_RATE : int = 44100
@@ -219,9 +222,9 @@ class TestValidateInputFile:
 class TestValidateOutputPath:
     """Tests for output path validation."""
 
-    def test_non_wav_extension_raises(self) -> None:
-        with pytest.raises(ValueError, match="Output must be a .wav file"):
-            validate_output_path("output.mp3")
+    def test_unsupported_extension_raises(self) -> None:
+        with pytest.raises(ValueError, match="Unsupported output format"):
+            validate_output_path("output.txt")
 
     def test_missing_output_directory_raises(self) -> None:
         with pytest.raises(FileNotFoundError, match="Output directory does not exist"):
@@ -231,8 +234,13 @@ class TestValidateOutputPath:
         out : str = os.path.join(str(tmp_path), "output.wav")
         validate_output_path(out)  # Should not raise
 
-    def test_only_wav_is_supported_output(self) -> None:
-        assert SUPPORTED_OUTPUT_FORMATS == {".wav"}
+    def test_mp3_output_accepted(self, tmp_path: str) -> None:
+        out : str = os.path.join(str(tmp_path), "output.mp3")
+        validate_output_path(out)  # Should not raise with HIG multi-format
+
+    def test_all_supported_output_formats(self) -> None:
+        expected : set[str] = {".mp3", ".wav", ".flac", ".ogg", ".m4a"}
+        assert SUPPORTED_OUTPUT_FORMATS == expected
 
 
 class TestValidateParamRange:
@@ -282,6 +290,40 @@ class TestGetOutputPath:
     def test_default_suffix_is_8d(self) -> None:
         result : str = get_output_path("x.mp3")
         assert "_8d" in result
+
+    def test_output_ext_override_to_mp3(self) -> None:
+        result : str = get_output_path("song.wav", output_ext=".mp3")
+        assert result == "song_8d.mp3"
+
+    def test_output_ext_override_to_flac(self) -> None:
+        result : str = get_output_path("song.wav", output_ext=".flac")
+        assert result == "song_8d.flac"
+
+
+class TestGetExportFormat:
+    """Tests for pydub export format mapping."""
+
+    def test_wav_returns_wav(self) -> None:
+        assert get_export_format("output.wav") == "wav"
+
+    def test_mp3_returns_mp3(self) -> None:
+        assert get_export_format("output.mp3") == "mp3"
+
+    def test_m4a_returns_mp4(self) -> None:
+        assert get_export_format("output.m4a") == "mp4"
+
+    def test_flac_returns_flac(self) -> None:
+        assert get_export_format("output.flac") == "flac"
+
+    def test_ogg_returns_ogg(self) -> None:
+        assert get_export_format("output.ogg") == "ogg"
+
+    def test_unknown_defaults_to_wav(self) -> None:
+        assert get_export_format("output.xyz") == "wav"
+
+    def test_all_formats_in_map(self) -> None:
+        for ext in SUPPORTED_OUTPUT_FORMATS:
+            assert ext in FORMAT_EXPORT_MAP
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -345,8 +387,8 @@ class TestConvertTo8D:
     def test_invalid_output_extension_raises(self, tmp_path: str) -> None:
         in_path : str = os.path.join(str(tmp_path), "input.wav")
         make_test_wav(in_path)
-        with pytest.raises(ValueError, match="Output must be a .wav"):
-            convert_to_8d(in_path, "output.mp3", verbose=False)
+        with pytest.raises(ValueError, match="Unsupported output format"):
+            convert_to_8d(in_path, "output.txt", verbose=False)
 
     def test_pan_speed_out_of_range_raises(self, tmp_path: str) -> None:
         in_path : str = os.path.join(str(tmp_path), "input.wav")
@@ -390,3 +432,103 @@ class TestConvertTo8D:
         data_a, _ = sf.read(out_a, dtype="float32")
         data_b, _ = sf.read(out_b, dtype="float32")
         assert not np.allclose(data_a, data_b)
+
+
+# ════════════════════════════════════════════════════════════════════
+# printer.py tests — HIG compliance
+# ════════════════════════════════════════════════════════════════════
+
+class TestOutputPrinter:
+    """Tests for HIG-compliant OutputPrinter."""
+
+    def test_success_prints_to_stdout(self, capsys) -> None:
+        printer : OutputPrinter = OutputPrinter(no_color=True)
+        printer.success("song_8d.wav", details={"Format": "WAV", "Size": "4.21 MB"})
+        captured = capsys.readouterr()
+        assert "song_8d.wav" in captured.out
+        assert "Format" in captured.out
+        assert "4.21 MB" in captured.out
+
+    def test_error_prints_to_stderr(self, capsys) -> None:
+        printer : OutputPrinter = OutputPrinter(no_color=True)
+        printer.error("File not found.", hint="Check the path.")
+        captured = capsys.readouterr()
+        assert "File not found." in captured.err
+        assert "Check the path." in captured.err
+        assert captured.out == ""  # Nothing on stdout
+
+    def test_warning_prints_with_hint(self, capsys) -> None:
+        printer : OutputPrinter = OutputPrinter(no_color=True)
+        printer.warning("FFmpeg not found.", hint="Install FFmpeg.")
+        captured = capsys.readouterr()
+        assert "FFmpeg not found." in captured.out
+        assert "Install FFmpeg." in captured.out
+
+    def test_info_prints_message(self, capsys) -> None:
+        printer : OutputPrinter = OutputPrinter(no_color=True)
+        printer.info("Processing complete.")
+        captured = capsys.readouterr()
+        assert "Processing complete." in captured.out
+
+    def test_quiet_suppresses_success(self, capsys) -> None:
+        printer : OutputPrinter = OutputPrinter(quiet=True)
+        printer.success("output.wav", details={"Format": "WAV"})
+        captured = capsys.readouterr()
+        assert captured.out == ""
+
+    def test_quiet_suppresses_warning(self, capsys) -> None:
+        printer : OutputPrinter = OutputPrinter(quiet=True)
+        printer.warning("Some warning.")
+        captured = capsys.readouterr()
+        assert captured.out == ""
+
+    def test_quiet_suppresses_info(self, capsys) -> None:
+        printer : OutputPrinter = OutputPrinter(quiet=True)
+        printer.info("Some info.")
+        captured = capsys.readouterr()
+        assert captured.out == ""
+
+    def test_quiet_does_not_suppress_error(self, capsys) -> None:
+        """Errors must always reach the user, even in quiet mode."""
+        printer : OutputPrinter = OutputPrinter(quiet=True, no_color=True)
+        printer.error("Critical failure.")
+        captured = capsys.readouterr()
+        assert "Critical failure." in captured.err
+
+    def test_no_color_disables_ansi(self, capsys) -> None:
+        printer : OutputPrinter = OutputPrinter(no_color=True)
+        printer.success("test.wav")
+        captured = capsys.readouterr()
+        assert "\033[" not in captured.out
+
+    def test_color_enabled_includes_ansi(self, capsys) -> None:
+        printer : OutputPrinter = OutputPrinter(no_color=False)
+        printer.success("test.wav")
+        captured = capsys.readouterr()
+        assert "\033[" in captured.out
+
+    def test_no_color_env_variable(self, monkeypatch) -> None:
+        """NO_COLOR env var should auto-disable color."""
+        monkeypatch.setenv("NO_COLOR", "1")
+        printer : OutputPrinter = OutputPrinter()
+        assert printer.no_color is True
+
+    def test_colorize_returns_plain_when_no_color(self) -> None:
+        printer : OutputPrinter = OutputPrinter(no_color=True)
+        result : str = printer._colorize("hello", "32")
+        assert result == "hello"
+        assert "\033[" not in result
+
+    def test_colorize_returns_ansi_when_color_enabled(self) -> None:
+        printer : OutputPrinter = OutputPrinter(no_color=False)
+        result : str = printer._colorize("hello", "32")
+        assert result == "\033[32mhello\033[0m"
+
+    def test_success_detail_column_alignment(self, capsys) -> None:
+        """Detail keys should be padded to COL_WIDTH for alignment."""
+        printer : OutputPrinter = OutputPrinter(no_color=True)
+        printer.success("out.wav", details={"Format": "WAV", "Size": "1 MB"})
+        captured = capsys.readouterr()
+        # Keys are padded to 10 chars
+        assert "Format    " in captured.out
+        assert "Size      " in captured.out
