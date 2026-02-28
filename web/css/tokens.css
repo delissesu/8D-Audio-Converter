@@ -1,0 +1,200 @@
+/* web/css/tokens.css */
+/* ─────────────────────────────────────────────────────────────────
+   Apple HIG Design Tokens — adapted for web
+   Source: developer.apple.com/design/human-interface-guidelines
+   ──────────────────────────────────────────────────────────────── */
+
+:root {
+  /* ── Typography — SF Pro system font stack ──────────────────── */
+  --font-system:
+    -apple-system,
+    BlinkMacSystemFont,
+    "SF Pro Display",
+    "SF Pro Text",
+    "Helvetica Neue",
+    "Segoe UI",
+    system-ui,
+    sans-serif;
+
+  --font-mono:
+    "SF Mono",
+    "Fira Code",
+    "Consolas",
+    monospace;
+
+  /* ── Type Scale (HIG Dynamic Type equivalents) ──────────────── */
+  --text-large-title : 2rem;        /* 32px — Large Title */
+  --text-title-1     : 1.75rem;     /* 28px — Title 1 */
+  --text-title-2     : 1.375rem;    /* 22px — Title 2 */
+  --text-title-3     : 1.25rem;     /* 20px — Title 3 */
+  --text-headline    : 1.0625rem;   /* 17px — Headline, semibold */
+  --text-body        : 1.0625rem;   /* 17px — Body */
+  --text-callout     : 1rem;        /* 16px — Callout */
+  --text-subhead     : 0.9375rem;   /* 15px — Subheadline */
+  --text-footnote    : 0.8125rem;   /* 13px — Footnote */
+  --text-caption-1   : 0.75rem;     /* 12px — Caption 1 */
+  --text-caption-2   : 0.6875rem;   /* 11px — Caption 2 */
+
+  /* ── Font Weights ───────────────────────────────────────────── */
+  --weight-ultralight : 100;
+  --weight-thin       : 200;
+  --weight-light      : 300;
+  --weight-regular    : 400;
+  --weight-medium     : 500;
+  --weight-semibold   : 600;
+  --weight-bold       : 700;
+  --weight-heavy      : 800;
+  --weight-black      : 900;
+
+  /* ── 8pt Spacing Grid ───────────────────────────────────────── */
+  --space-1  : 4px;
+  --space-2  : 8px;
+  --space-3  : 12px;
+  --space-4  : 16px;
+  --space-5  : 20px;
+  --space-6  : 24px;
+  --space-8  : 32px;
+  --space-10 : 40px;
+  --space-12 : 48px;
+  --space-16 : 64px;
+
+  /* ── Border Radius ──────────────────────────────────────────── */
+  --radius-xs  : 4px;
+  --radius-sm  : 8px;
+  --radius-md  : 12px;   /* Standard card radius (HIG) */
+  --radius-lg  : 16px;
+  --radius-xl  : 20px;
+  --radius-2xl : 28px;   /* Sheet/modal radius */
+  --radius-full: 9999px; /* Pill / capsule button */
+
+  /* ── Transition ─────────────────────────────────────────────── */
+  --ease-default : cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --ease-spring  : cubic-bezier(0.34, 1.56, 0.64, 1);
+  --duration-fast: 150ms;
+  --duration-base: 250ms;
+  --duration-slow: 400ms;
+}
+
+/* ── Light Mode Colors (HIG System Colors) ──────────────────────── */
+:root,
+[data-theme="light"] {
+  /* Background layers */
+  --bg-primary         : rgba(242, 242, 247, 1);   /* systemGroupedBackground */
+  --bg-secondary       : rgba(255, 255, 255, 1);   /* secondarySystemGroupedBackground */
+  --bg-tertiary        : rgba(242, 242, 247, 1);   /* tertiarySystemGroupedBackground */
+
+  /* Material / glass effect */
+  --material-regular   : rgba(255, 255, 255, 0.72);
+  --material-thick     : rgba(255, 255, 255, 0.85);
+  --material-thin      : rgba(255, 255, 255, 0.55);
+
+  /* Labels */
+  --label-primary      : rgba(0, 0, 0, 1);
+  --label-secondary    : rgba(60, 60, 67, 0.6);
+  --label-tertiary     : rgba(60, 60, 67, 0.3);
+  --label-quaternary   : rgba(60, 60, 67, 0.18);
+
+  /* Fills */
+  --fill-primary       : rgba(120, 120, 128, 0.2);
+  --fill-secondary     : rgba(120, 120, 128, 0.16);
+  --fill-tertiary      : rgba(118, 118, 128, 0.12);
+
+  /* Separator */
+  --separator          : rgba(60, 60, 67, 0.29);
+  --separator-opaque   : rgba(198, 198, 200, 1);
+
+  /* HIG System Tints */
+  --tint-blue          : rgba(0,   122, 255, 1);
+  --tint-green         : rgba(52,  199,  89, 1);
+  --tint-indigo        : rgba(88,   86, 214, 1);
+  --tint-orange        : rgba(255, 149,   0, 1);
+  --tint-pink          : rgba(255,  45,  85, 1);
+  --tint-purple        : rgba(175,  82, 222, 1);
+  --tint-red           : rgba(255,  59,  48, 1);
+  --tint-teal          : rgba(90,  200, 250, 1);
+  --tint-yellow        : rgba(255, 204,   0, 1);
+
+  /* Shadows */
+  --shadow-sm  : 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md  : 0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+  --shadow-lg  : 0 8px 24px rgba(0,0,0,0.10), 0 4px 8px rgba(0,0,0,0.06);
+  --shadow-xl  : 0 16px 48px rgba(0,0,0,0.12), 0 8px 16px rgba(0,0,0,0.08);
+}
+
+/* ── Dark Mode Colors ───────────────────────────────────────────── */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-primary         : rgba(0, 0, 0, 1);
+    --bg-secondary       : rgba(28, 28, 30, 1);
+    --bg-tertiary        : rgba(44, 44, 46, 1);
+
+    --material-regular   : rgba(28, 28, 30, 0.72);
+    --material-thick     : rgba(28, 28, 30, 0.85);
+
+    --label-primary      : rgba(255, 255, 255, 1);
+    --label-secondary    : rgba(235, 235, 245, 0.6);
+    --label-tertiary     : rgba(235, 235, 245, 0.3);
+    --label-quaternary   : rgba(235, 235, 245, 0.18);
+
+    --fill-primary       : rgba(120, 120, 128, 0.36);
+    --fill-secondary     : rgba(120, 120, 128, 0.32);
+    --fill-tertiary      : rgba(118, 118, 128, 0.24);
+
+    --separator          : rgba(84, 84, 88, 0.65);
+    --separator-opaque   : rgba(56, 56, 58, 1);
+
+    --tint-blue          : rgba(10,  132, 255, 1);
+    --tint-green         : rgba(48,  209,  88, 1);
+    --tint-indigo        : rgba(94,   92, 230, 1);
+    --tint-orange        : rgba(255, 159,  10, 1);
+    --tint-pink          : rgba(255,  55,  95, 1);
+    --tint-purple        : rgba(191,  90, 242, 1);
+    --tint-red           : rgba(255,  69,  58, 1);
+    --tint-teal          : rgba(100, 210, 255, 1);
+    --tint-yellow        : rgba(255, 214,  10, 1);
+
+    --shadow-sm  : 0 1px 3px rgba(0,0,0,0.30);
+    --shadow-md  : 0 4px 12px rgba(0,0,0,0.35);
+    --shadow-lg  : 0 8px 24px rgba(0,0,0,0.40);
+    --shadow-xl  : 0 16px 48px rgba(0,0,0,0.50);
+  }
+}
+
+/* ── Glassmorphism, gradients, animations, glows ────────────────── */
+
+:root {
+  /* ── Glassmorphism materials ────────────────────────────────── */
+  --glass-bg           : rgba(255, 255, 255, 0.60);
+  --glass-border       : rgba(255, 255, 255, 0.50);
+  --glass-blur         : blur(20px);
+  --glass-shadow       : 0 8px 32px rgba(0, 0, 0, 0.12),
+                         inset 0 1px 0 rgba(255,255,255,0.6);
+
+  /* ── Gradient palette ───────────────────────────────────────── */
+  --gradient-primary   : linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  --gradient-blue      : linear-gradient(135deg, #007AFF 0%, #5AC8FA 100%);
+  --gradient-green     : linear-gradient(135deg, #34C759 0%, #30D158 100%);
+  --gradient-purple    : linear-gradient(135deg, #AF52DE 0%, #5E5CE6 100%);
+  --gradient-progress  : linear-gradient(90deg, #007AFF, #5AC8FA, #007AFF);
+
+  /* ── Animation keyframe timings ────────────────────────────── */
+  --ease-bounce        : cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-smooth        : cubic-bezier(0.4, 0, 0.2, 1);
+  --duration-enter     : 350ms;
+  --duration-exit      : 200ms;
+
+  /* ── Glow shadows (for hover states) ───────────────────────── */
+  --glow-blue          : 0 0 20px rgba(0, 122, 255, 0.35);
+  --glow-green         : 0 0 20px rgba(52, 199, 89, 0.40);
+  --glow-purple        : 0 0 24px rgba(175, 82, 222, 0.35);
+}
+
+/* ── Dark mode glass overrides ──────────────────────────────────── */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --glass-bg    : rgba(28, 28, 30, 0.65);
+    --glass-border: rgba(255, 255, 255, 0.12);
+    --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.40),
+                    inset 0 1px 0 rgba(255,255,255,0.08);
+  }
+}

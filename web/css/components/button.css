@@ -1,0 +1,54 @@
+/* web/css/components/button.css */
+@import "../tokens.css";
+
+/* Shared base */
+.btn {
+  display            : flex;
+  align-items        : center;
+  justify-content    : center;
+  gap                : var(--space-2);
+  width              : 100%;
+  padding            : var(--space-4) var(--space-6);
+  border             : none;
+  border-radius      : var(--radius-md);
+  font-size          : var(--text-headline);
+  font-family        : var(--font-system);
+  font-weight        : var(--weight-semibold);
+  cursor             : pointer;
+  text-decoration    : none;
+  transition         : opacity var(--duration-fast) var(--ease-smooth),
+                       transform var(--duration-fast) var(--ease-bounce),
+                       box-shadow var(--duration-base) var(--ease-smooth);
+}
+.btn:active:not(:disabled) { transform: scale(0.96); }
+.btn:disabled              { opacity: 0.3; cursor: not-allowed; }
+
+/* Primary (blue gradient) */
+.btn-primary {
+  background         : var(--gradient-blue);
+  color              : #fff;
+  box-shadow         : 0 4px 15px rgba(0, 122, 255, 0.30);
+}
+.btn-primary:hover:not(:disabled) {
+  box-shadow         : var(--glow-blue), 0 4px 15px rgba(0, 122, 255, 0.30);
+  opacity            : 0.92;
+}
+
+/* Download (green gradient) */
+.btn-download {
+  background         : var(--gradient-green);
+  color              : #fff;
+  box-shadow         : 0 4px 15px rgba(52, 199, 89, 0.30);
+}
+.btn-download:hover {
+  box-shadow         : var(--glow-green), 0 4px 15px rgba(52, 199, 89, 0.30);
+  opacity            : 0.92;
+}
+
+/* Ghost (secondary action) */
+.btn-ghost {
+  background         : var(--fill-tertiary);
+  color              : var(--label-primary);
+  border             : 1px solid var(--separator);
+}
+.btn-ghost:hover:not(:disabled) { background: var(--fill-secondary); }

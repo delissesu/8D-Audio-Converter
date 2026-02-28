@@ -1,0 +1,37 @@
+/* web/css/components/progress.css */
+@import "../tokens.css";
+
+.progress-wrap  { padding: var(--space-6); }
+
+.progress-bar-track {
+  height             : 6px;
+  border-radius      : var(--radius-full);
+  background         : var(--fill-secondary);
+  overflow           : hidden;
+}
+
+/* Animated shimmer gradient fill */
+.progress-bar-fill {
+  height             : 100%;
+  border-radius      : var(--radius-full);
+  width              : 0%;
+  background         : var(--gradient-progress);
+  background-size    : 200% auto;
+  animation          : shimmer 2s linear infinite;
+  transition         : width var(--duration-base) var(--ease-smooth);
+}
+
+.progress-step-label {
+  font-size          : var(--text-subhead);
+  color              : var(--label-secondary);
+  margin-top         : var(--space-3);
+  text-align         : center;
+  min-height         : 20px;
+}
+.progress-pct {
+  font-size          : var(--text-caption-1);
+  font-family        : var(--font-mono);
+  color              : var(--label-tertiary);
+  text-align         : right;
+  margin-top         : var(--space-1);
+}

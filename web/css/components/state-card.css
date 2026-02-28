@@ -1,0 +1,16 @@
+/* web/css/components/state-card.css */
+@import "../tokens.css";
+
+.state-card {
+  padding            : var(--space-8);
+  text-align         : center;
+  display            : none;
+}
+.state-card.visible {
+  display            : block;
+  animation          : fade-slide-up var(--duration-enter) var(--ease-bounce);
+}
+.state-card__icon  { font-size: 3rem; margin-bottom: var(--space-4); display: block; }
+.state-card__title { font-size: var(--text-title-3); font-weight: var(--weight-semibold); margin-bottom: var(--space-2); }
+.state-card__sub   { font-size: var(--text-subhead); color: var(--label-secondary); margin-bottom: var(--space-5); }
+.state-card--error .state-card__title { color: var(--tint-red); }

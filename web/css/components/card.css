@@ -1,0 +1,18 @@
+/* web/css/components/card.css */
+@import "../tokens.css";
+
+.card {
+  background         : var(--glass-bg);
+  border             : 1px solid var(--glass-border);
+  border-radius      : var(--radius-md);
+  box-shadow         : var(--glass-shadow);
+  overflow           : hidden;
+  backdrop-filter    : var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  transition         : transform var(--duration-fast) var(--ease-bounce),
+                       box-shadow var(--duration-base) var(--ease-smooth);
+}
+.card:hover {
+  transform          : translateY(-1px);
+  box-shadow         : var(--glass-shadow), var(--glow-blue);
+}

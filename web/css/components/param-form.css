@@ -1,0 +1,64 @@
+/* web/css/components/param-form.css */
+@import "../tokens.css";
+
+.param-row {
+  display            : flex;
+  align-items        : center;
+  gap                : var(--space-4);
+  padding            : var(--space-4) var(--space-5);
+  border-bottom      : 1px solid var(--separator);
+  transition         : background var(--duration-fast);
+}
+.param-row:last-child   { border-bottom: none; }
+.param-row:hover        { background: rgba(0,0,0,0.02); }
+
+.param-label {
+  flex               : 0 0 88px;
+  font-size          : var(--text-callout);
+  font-weight        : var(--weight-medium);
+}
+
+.param-slider {
+  flex               : 1;
+  -webkit-appearance : none;
+  appearance         : none;
+  height             : 4px;
+  border-radius      : var(--radius-full);
+  background         : var(--fill-secondary);
+  outline            : none;
+  cursor             : pointer;
+}
+.param-slider::-webkit-slider-thumb {
+  -webkit-appearance : none;
+  width              : 22px;
+  height             : 22px;
+  border-radius      : var(--radius-full);
+  background         : white;
+  border             : none;
+  box-shadow         : 0 2px 8px rgba(0,0,0,0.20), 0 0 0 1px rgba(0,0,0,0.08);
+  cursor             : pointer;
+  transition         : transform var(--duration-fast) var(--ease-bounce),
+                       box-shadow var(--duration-fast);
+}
+.param-slider::-webkit-slider-thumb:hover {
+  transform          : scale(1.2);
+  box-shadow         : 0 4px 12px rgba(0,122,255,0.30), 0 0 0 1px rgba(0,0,0,0.08);
+}
+.param-slider::-webkit-slider-runnable-track {
+  height             : 4px;
+  border-radius      : var(--radius-full);
+  background         : linear-gradient(
+    to right,
+    var(--tint-blue) 0%,
+    var(--tint-blue) var(--progress, 0%),
+    var(--fill-secondary) var(--progress, 0%)
+  );
+}
+
+.param-value {
+  flex               : 0 0 44px;
+  text-align         : right;
+  font-size          : var(--text-footnote);
+  font-family        : var(--font-mono);
+  color              : var(--label-secondary);
+}
