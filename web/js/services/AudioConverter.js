@@ -53,9 +53,12 @@ export class AudioConverter {
   /**
    * Returns the download URL for a completed job.
    * @param {string} jobId
+   * @param {string} [filename] - Optional filename to force down
    * @returns {string}
    */
-  getDownloadUrl(jobId) {
-    return `${this.#baseUrl}/download/${jobId}`;
+  getDownloadUrl(jobId, filename = null) {
+    let url = `${this.#baseUrl}/download/${jobId}`;
+    if (filename) url += `?name=${encodeURIComponent(filename)}`;
+    return url;
   }
 }

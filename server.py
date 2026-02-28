@@ -167,11 +167,14 @@ def download_file(job_id: str):
         "m4a" : "audio/mp4",
         "aiff": "audio/aiff",
     }.get(ext, "application/octet-stream")
+    
+    download_name = request.args.get("name", f"8d_audio.{ext}")
+    
     return send_file(
         output_path,
         mimetype=mimetype,
         as_attachment=True,
-        download_name=f"8d_audio.{ext}",
+        download_name=download_name,
     )
 
 
