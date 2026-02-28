@@ -5,7 +5,7 @@ Convert any audio file into immersive 8D audio from the command line.
 ## Installation
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/delissesu/8D-Audio-Converter.git
 cd 8d-audio-converter
 python -m venv venv && venv\Scripts\activate
 pip install -r requirements.txt
