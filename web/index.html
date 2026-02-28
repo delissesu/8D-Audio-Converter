@@ -221,7 +221,7 @@
             
             <div class="text-center space-y-1" id="drop-text-container">
                 <p id="drop-primary-text" class="text-base font-bold text-primary">Drop audio source</p>
-                <p id="drop-secondary-text" class="text-sm text-muted">MP3, WAV, FLAC</p>
+                <p id="drop-secondary-text" class="text-sm text-muted">MP3, WAV, FLAC, OGG, AAC, M4A</p>
             </div>
         </div>
 
@@ -242,6 +242,14 @@
                     <label class="flex-1 relative cursor-pointer group">
                         <input class="peer sr-only form-format" name="format" type="radio" value="flac" />
                         <div class="w-full py-2 text-center text-sm font-bold text-muted peer-checked:text-primary peer-checked:bg-white peer-checked:shadow-sm rounded transition-all duration-200">FLAC</div>
+                    </label>
+                    <label class="flex-1 relative cursor-pointer group">
+                        <input class="peer sr-only form-format" name="format" type="radio" value="ogg" />
+                        <div class="w-full py-2 text-center text-sm font-bold text-muted peer-checked:text-primary peer-checked:bg-white peer-checked:shadow-sm rounded transition-all duration-200">OGG</div>
+                    </label>
+                    <label class="flex-1 relative cursor-pointer group">
+                        <input class="peer sr-only form-format" name="format" type="radio" value="m4a" />
+                        <div class="w-full py-2 text-center text-sm font-bold text-muted peer-checked:text-primary peer-checked:bg-white peer-checked:shadow-sm rounded transition-all duration-200">M4A</div>
                     </label>
                 </div>
             </div>
@@ -382,22 +390,42 @@
             <div id="waveform-container" class="w-full h-[240px] bg-white dark:bg-slate-800 relative flex items-center justify-center px-8 gap-[3px] group-hover:cursor-crosshair overflow-hidden rounded-t-[14px]">
                 <div class="absolute inset-0 pointer-events-none opacity-[0.03]" style="background-image: linear-gradient(#1D1D1F 1px, transparent 1px), linear-gradient(90deg, #1D1D1F 1px, transparent 1px); background-size: 40px 40px;"></div>
                 
-                <!-- Static rendering of bars for style, active class added when playing -->
-                <div class="waveform-bar h-12"></div><div class="waveform-bar h-16"></div><div class="waveform-bar h-8"></div>
-                <div class="waveform-bar h-20"></div><div class="waveform-bar h-24"></div><div class="waveform-bar h-10"></div>
-                <div class="waveform-bar h-14"></div><div class="waveform-bar h-32"></div><div class="waveform-bar h-16"></div>
-                <div class="waveform-bar h-8"></div><div class="waveform-bar h-20"></div>
-                <!-- Playhead Indicator -->
-                <div id="playhead-indicator" class="waveform-bar h-28 bg-accent !w-1.5 relative z-10 mx-[-1px]"></div>
-                
-                <div class="waveform-bar h-36"></div><div class="waveform-bar h-24"></div><div class="waveform-bar h-12"></div>
-                <div class="waveform-bar h-16"></div><div class="waveform-bar h-20"></div><div class="waveform-bar h-8"></div>
-                <div class="waveform-bar h-12"></div><div class="waveform-bar h-16"></div><div class="waveform-bar h-24"></div>
-                <div class="waveform-bar h-10"></div><div class="waveform-bar h-14"></div><div class="waveform-bar h-8"></div>
-                <div class="waveform-bar h-20"></div><div class="waveform-bar h-16"></div><div class="waveform-bar h-8"></div>
-                <div class="waveform-bar h-12"></div><div class="waveform-bar h-24"></div><div class="waveform-bar h-10"></div>
-                <div class="waveform-bar h-14"></div><div class="waveform-bar h-32"></div><div class="waveform-bar h-16"></div>
-                <div class="waveform-bar h-8"></div><div class="waveform-bar h-20"></div><div class="waveform-bar h-12"></div>
+                <div class="waveform-bar h-12"></div>
+                <div class="waveform-bar h-16"></div>
+                <div class="waveform-bar h-8"></div>
+                <div class="waveform-bar h-20"></div>
+                <div class="waveform-bar h-24"></div>
+                <div class="waveform-bar h-10"></div>
+                <div class="waveform-bar h-14"></div>
+                <div class="waveform-bar h-32"></div>
+                <div class="waveform-bar h-16"></div>
+                <div class="waveform-bar h-8"></div>
+                <div class="waveform-bar h-20"></div>
+                <div class="waveform-bar h-28 bg-accent"></div>
+                <div class="waveform-bar h-36"></div>
+                <div class="waveform-bar h-24"></div>
+                <div class="waveform-bar h-12"></div>
+                <div class="waveform-bar h-16"></div>
+                <div class="waveform-bar h-20"></div>
+                <div class="waveform-bar h-8"></div>
+                <div class="waveform-bar h-12"></div>
+                <div class="waveform-bar h-16"></div>
+                <div class="waveform-bar h-24"></div>
+                <div class="waveform-bar h-10"></div>
+                <div class="waveform-bar h-14"></div>
+                <div class="waveform-bar h-8"></div>
+                <div class="waveform-bar h-20"></div>
+                <div class="waveform-bar h-16"></div>
+                <div class="waveform-bar h-8"></div>
+                <div class="waveform-bar h-12"></div>
+                <div class="waveform-bar h-24"></div>
+                <div class="waveform-bar h-10"></div>
+                <div class="waveform-bar h-14"></div>
+                <div class="waveform-bar h-32"></div>
+                <div class="waveform-bar h-16"></div>
+                <div class="waveform-bar h-8"></div>
+                <div class="waveform-bar h-20"></div>
+                <div class="waveform-bar h-12"></div>
                 <div class="waveform-bar h-8"></div>
             </div>
 

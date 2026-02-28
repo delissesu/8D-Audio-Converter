@@ -36,6 +36,11 @@ const progressCircle = document.getElementById('progress-circle');
 const statusDetail = document.getElementById('status-detail');
 const btnCancel = document.getElementById('btn-cancel');
 
+// Mute button
+const btnMute = document.getElementById('btn-mute');
+const iconVolume = document.getElementById('icon-volume');
+let savedVolume = 0.8;
+
 // Result View
 const resultFilename = document.getElementById('result-filename');
 const resultSize = document.getElementById('result-size');
@@ -49,7 +54,6 @@ const btnDownload = document.getElementById('btn-download');
 const btnRestart = document.getElementById('btn-restart');
 const resultSettings = document.getElementById('result-settings');
 const waveformBars = document.querySelectorAll('#waveform-container .waveform-bar');
-const playheadIndicator = document.getElementById('playhead-indicator');
 
 // Error View
 const errorMessage = document.getElementById('error-message');
@@ -140,7 +144,11 @@ updateSliderTrack(crossfeedSlider, crossfeedTrack);
 
 // Convert Action
 btnConvert.addEventListener('click', async () => {
-    if (!selectedFile) return;
+    if (!selectedFile || btnConvert.disabled) return;
+
+    // Disable to prevent double-click
+    btnConvert.setAttribute('disabled', 'true');
+    btnConvert.classList.add('opacity-50', 'cursor-not-allowed');
 
     // Build params
     let selectedFormat = 'mp3';
@@ -168,23 +176,29 @@ btnConvert.addEventListener('click', async () => {
         pollStatus(currentJobId, selectedFormat);
     } catch (err) {
         showError(err.message, "ERR_UPLOAD");
+    } finally {
+        // Re-enable convert button if we return to upload view
+        if (selectedFile) {
+            btnConvert.removeAttribute('disabled');
+            btnConvert.classList.remove('opacity-50', 'cursor-not-allowed');
+        }
     }
 });
 
 // --- Processing Logic ---
 const circumference = 289; // 2 * pi * 46
 
+let lastStatusText = '';
+
 function startProgressAnim(text) {
-    statusDetail.style.opacity = '0';
-    setTimeout(() => {
-        statusDetail.textContent = text;
-        statusDetail.style.opacity = '1';
-    }, 200);
+    lastStatusText = text;
+    statusDetail.textContent = text;
+    statusDetail.style.opacity = '1';
     progressCircle.style.strokeDashoffset = circumference;
 }
 
 btnCancel.addEventListener('click', () => {
-    clearInterval(pollingInterval);
+    cleanupAudioAndPolling();
     resetUpload();
     showView('upload');
 });
@@ -199,12 +213,16 @@ function pollStatus(jobId, overrideFormat) {
             const offset = circumference - (pct / 100) * circumference;
             progressCircle.style.strokeDashoffset = offset;
             
-            // Update text
-            statusDetail.style.opacity = '0';
-            setTimeout(() => {
-                statusDetail.textContent = status.step || "Processing...";
-                statusDetail.style.opacity = '1';
-            }, 200);
+            // Update text only when it changes (prevents flicker)
+            const newText = status.step || "Processing...";
+            if (newText !== lastStatusText) {
+                lastStatusText = newText;
+                statusDetail.style.opacity = '0';
+                setTimeout(() => {
+                    statusDetail.textContent = newText;
+                    statusDetail.style.opacity = '1';
+                }, 150);
+            }
 
             if (status.status === "done") {
                 clearInterval(pollingInterval);
@@ -253,13 +271,17 @@ function finishConversion(jobId, format) {
         <span>X-FEED: ${crossfeedSlider.value}%</span>
     `;
 
-    // Setup Audio Player
+    // Properly clean up old audio player
     if (audioPlayer) {
         audioPlayer.pause();
         audioPlayer.removeAttribute('src');
+        audioPlayer.load(); // Release media resources
+        audioPlayer = null;
     }
     
     audioPlayer = new Audio(downloadUrl);
+    // Reset playhead: move accent to first bar
+    updatePlayheadBar(0);
     
     audioPlayer.addEventListener('loadedmetadata', () => {
         updateTimeDisplay(0, audioPlayer.duration);
@@ -267,17 +289,10 @@ function finishConversion(jobId, format) {
     
     audioPlayer.addEventListener('timeupdate', () => {
         updateTimeDisplay(audioPlayer.currentTime, audioPlayer.duration);
-        // Move playhead via position, clamping it within the container bounds
-        // The container has px-8 (32px padding on each side). 
-        // We'll map the percentage so it stays within the visual bars rather than going to the absolute edge.
+        // Move accent color to the bar matching current playback position
         if(audioPlayer.duration > 0) {
-            const pct = (audioPlayer.currentTime / audioPlayer.duration) * 100;
-            // The blue bar is part of the flex container, setting width/left needs absolute positioning,
-            // but since it's an inline flex item in the current design, let's convert it to absolute
-            // so it hovers over the other bars correctly.
-            playheadIndicator.style.position = 'absolute';
-            // Offset by padding to keep it over the bars (10% to 90% approx)
-            playheadIndicator.style.left = `calc(32px + ${pct}% * ((100% - 64px) / 100))`;
+            const pct = audioPlayer.currentTime / audioPlayer.duration;
+            updatePlayheadBar(pct);
         }
     });
 
@@ -310,6 +325,21 @@ function updateTimeDisplay(current, duration) {
     playbackTime.innerHTML = `${formatTime(current)} <span class="text-border-color">/</span> ${formatTime(duration)}`;
 }
 
+function updatePlayheadBar(pct) {
+    // Move the accent color to the bar matching current playback position
+    const bars = document.querySelectorAll('#waveform-container .waveform-bar');
+    const totalBars = bars.length;
+    if (totalBars === 0) return;
+    const activeIndex = Math.min(Math.floor(pct * totalBars), totalBars - 1);
+    bars.forEach((bar, i) => {
+        if (i === activeIndex) {
+            bar.classList.add('bg-accent');
+        } else {
+            bar.classList.remove('bg-accent');
+        }
+    });
+}
+
 function setPlayingState(playing) {
     isPlaying = playing;
     const container = document.getElementById('waveform-container');
@@ -338,16 +368,71 @@ btnPlayPause.addEventListener('click', () => {
 volumeSlider.addEventListener('input', () => {
     if (audioPlayer) audioPlayer.volume = volumeSlider.value;
     updateSliderTrack(volumeSlider, volumeTrack);
+    updateVolumeIcon(parseFloat(volumeSlider.value));
+});
+
+// Mute toggle
+btnMute.addEventListener('click', () => {
+    if (!audioPlayer) return;
+    if (audioPlayer.volume > 0) {
+        savedVolume = audioPlayer.volume;
+        audioPlayer.volume = 0;
+        volumeSlider.value = 0;
+    } else {
+        audioPlayer.volume = savedVolume;
+        volumeSlider.value = savedVolume;
+    }
+    updateSliderTrack(volumeSlider, volumeTrack);
+    updateVolumeIcon(audioPlayer.volume);
+});
+
+function updateVolumeIcon(vol) {
+    if (vol <= 0) {
+        iconVolume.textContent = 'volume_off';
+    } else if (vol < 0.5) {
+        iconVolume.textContent = 'volume_down';
+    } else {
+        iconVolume.textContent = 'volume_up';
+    }
+}
+
+// Waveform click-to-seek
+document.getElementById('waveform-container').addEventListener('click', (e) => {
+    if (!audioPlayer || !audioPlayer.duration) return;
+    const bars = document.querySelectorAll('#waveform-container .waveform-bar');
+    if (bars.length === 0) return;
+    const containerRect = e.currentTarget.getBoundingClientRect();
+    const firstRect = bars[0].getBoundingClientRect();
+    const lastRect = bars[bars.length - 1].getBoundingClientRect();
+    const startX = firstRect.left - containerRect.left;
+    const endX = lastRect.right - containerRect.left;
+    const clickX = e.clientX - containerRect.left;
+    const pct = Math.max(0, Math.min(1, (clickX - startX) / (endX - startX)));
+    audioPlayer.currentTime = pct * audioPlayer.duration;
 });
 
 btnRestart.addEventListener('click', () => {
-    if (audioPlayer) {
-        audioPlayer.pause();
-        audioPlayer = null;
-    }
+    cleanupAudioAndPolling();
     resetUpload();
     showView('upload');
 });
+
+function cleanupAudioAndPolling() {
+    // Stop any active polling
+    if (pollingInterval) {
+        clearInterval(pollingInterval);
+        pollingInterval = null;
+    }
+    // Properly release audio resources
+    if (audioPlayer) {
+        audioPlayer.pause();
+        audioPlayer.removeAttribute('src');
+        audioPlayer.load();
+        audioPlayer = null;
+    }
+    isPlaying = false;
+    lastStatusText = '';
+}
 
 // --- Error Logic ---
 function showError(msg, code) {
@@ -357,12 +442,18 @@ function showError(msg, code) {
 }
 
 btnErrBack.addEventListener('click', () => {
+    cleanupAudioAndPolling();
     resetUpload();
     showView('upload');
 });
 
 btnErrRetry.addEventListener('click', () => {
+    cleanupAudioAndPolling();
     if (selectedFile) {
+        // Re-enable convert button before clicking
+        btnConvert.removeAttribute('disabled');
+        btnConvert.classList.remove('opacity-50', 'cursor-not-allowed', 'bg-muted');
+        btnConvert.classList.add('bg-primary', 'hover:bg-primary-hover', 'shadow-lg');
         btnConvert.click();
     } else {
         showView('upload');
@@ -374,7 +465,7 @@ function resetUpload() {
     selectedFile = null;
     audioInput.value = '';
     dropPrimaryText.textContent = "Drop audio source";
-    dropSecondaryText.textContent = "MP3, WAV, FLAC";
+    dropSecondaryText.textContent = "MP3, WAV, FLAC, OGG, AAC, M4A";
     dropPrimaryText.classList.remove('text-accent');
     btnConvert.setAttribute('disabled', 'true');
     btnConvert.classList.add('opacity-50', 'cursor-not-allowed', 'bg-muted');
