@@ -1,0 +1,172 @@
+/* web/css/components/history-panel.css
+   Styles for the conversion history panel. */
+
+/* ── Panel container ──────────────────────────────────────────── */
+.history-panel {
+  display: flex;
+  flex-direction: column;
+  border-radius: 16px;
+  background: #FFFFFF;
+  border: 1px solid #E5E5EA;
+  overflow: hidden;
+  box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.04);
+}
+
+/* ── Header (clickable toggle) ────────────────────────────────── */
+.history-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 14px 20px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 150ms ease;
+}
+
+.history-panel__header:hover {
+  background: #F5F5F7;
+}
+
+.history-panel__header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.history-panel__icon {
+  font-size: 18px;
+  color: #86868B;
+}
+
+.history-panel__title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #1D1D1F;
+}
+
+.history-panel__badge {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  color: #FFFFFF;
+  background: #86868B;
+  border-radius: 10px;
+  padding: 1px 7px;
+  min-width: 20px;
+  text-align: center;
+}
+
+.history-panel__chevron {
+  font-size: 20px;
+  color: #86868B;
+  transition: transform 200ms ease;
+}
+
+/* ── Body (collapsible) ───────────────────────────────────────── */
+.history-panel__body {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid #E5E5EA;
+}
+
+/* ── Individual history item ──────────────────────────────────── */
+.history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-bottom: 1px solid #F5F5F7;
+  transition: background 100ms ease;
+}
+
+.history-item:hover {
+  background: #FAFAFA;
+}
+
+.history-item:last-of-type {
+  border-bottom: none;
+}
+
+.history-item__info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.history-item__name {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #1D1D1F;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.history-item__meta {
+  font-size: 0.6875rem;
+  color: #86868B;
+  font-family: "JetBrains Mono", monospace;
+}
+
+.history-item__actions {
+  flex-shrink: 0;
+  margin-left: 12px;
+}
+
+.history-item__download {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  color: #1D1D1F;
+  text-decoration: none;
+  transition: all 100ms ease;
+}
+
+.history-item__download:hover {
+  background: #E5E5EA;
+}
+
+/* ── Expired state ────────────────────────────────────────────── */
+.history-item--expired {
+  opacity: 0.5;
+}
+
+.history-item__expired-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: #FF3B30;
+  padding: 4px 8px;
+  background: rgba(255, 59, 48, 0.08);
+  border-radius: 6px;
+  cursor: help;
+}
+
+/* ── Clear button ─────────────────────────────────────────────── */
+.history-panel__clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px;
+  border: none;
+  border-top: 1px solid #E5E5EA;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #86868B;
+  transition: all 150ms ease;
+}
+
+.history-panel__clear:hover {
+  color: #FF3B30;
+  background: rgba(255, 59, 48, 0.04);
+}

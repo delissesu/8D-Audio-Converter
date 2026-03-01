@@ -1,0 +1,251 @@
+/* web/css/components/file-queue.css
+   Styles for the batch file queue component. */
+
+/* ── Container ────────────────────────────────────────────────── */
+.file-queue {
+  display: flex;
+  flex-direction: column;
+  border-radius: 16px;
+  background: #FFFFFF;
+  border: 1px solid #E5E5EA;
+  overflow: hidden;
+  box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.04);
+}
+
+/* ── Header ───────────────────────────────────────────────────── */
+.file-queue__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid #E5E5EA;
+}
+
+.file-queue__header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.file-queue__icon {
+  font-size: 18px;
+  color: #86868B;
+}
+
+.file-queue__title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #1D1D1F;
+}
+
+.file-queue__badge {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  color: #FFFFFF;
+  background: #0071E3;
+  border-radius: 10px;
+  padding: 1px 7px;
+  min-width: 20px;
+  text-align: center;
+}
+
+.file-queue__clear-btn {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #86868B;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: all 100ms ease;
+  font-family: inherit;
+}
+
+.file-queue__clear-btn:hover {
+  color: #FF3B30;
+  background: rgba(255, 59, 48, 0.06);
+}
+
+/* ── File list ────────────────────────────────────────────────── */
+.file-queue__list {
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.file-queue__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 20px;
+  border-bottom: 1px solid #F5F5F7;
+  transition: background 100ms ease;
+}
+
+.file-queue__item:last-child {
+  border-bottom: none;
+}
+
+.file-queue__item:hover {
+  background: #FAFAFA;
+}
+
+.file-queue__item--done {
+  background: rgba(52, 199, 89, 0.04);
+}
+
+.file-queue__item--error {
+  background: rgba(255, 59, 48, 0.04);
+}
+
+.file-queue__item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
+.file-queue__item-name {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #1D1D1F;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-queue__item-meta {
+  font-size: 0.6875rem;
+  color: #86868B;
+  font-family: "JetBrains Mono", monospace;
+}
+
+.file-queue__item-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 12px;
+  flex-shrink: 0;
+}
+
+.file-queue__remove-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: #86868B;
+  cursor: pointer;
+  transition: all 100ms ease;
+}
+
+.file-queue__remove-btn:hover {
+  background: rgba(255, 59, 48, 0.08);
+  color: #FF3B30;
+}
+
+/* ── Status badges ────────────────────────────────────────────── */
+.file-queue__status {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.file-queue__status--done {
+  color: #34C759;
+  background: rgba(52, 199, 89, 0.1);
+}
+
+.file-queue__status--error {
+  color: #FF3B30;
+  background: rgba(255, 59, 48, 0.1);
+  cursor: help;
+}
+
+.file-queue__status--processing {
+  color: #0071E3;
+  background: rgba(0, 113, 227, 0.1);
+}
+
+.file-queue__status--queued {
+  color: #86868B;
+  background: #F5F5F7;
+}
+
+.file-queue__spin {
+  animation: file-queue-spin 1s linear infinite;
+}
+
+@keyframes file-queue-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* ── Footer ───────────────────────────────────────────────────── */
+.file-queue__footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  border-top: 1px solid #E5E5EA;
+}
+
+.file-queue__add-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid #E5E5EA;
+  border-radius: 8px;
+  padding: 6px 12px;
+  background: #FFFFFF;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #1D1D1F;
+  transition: all 100ms ease;
+}
+
+.file-queue__add-btn:hover {
+  border-color: #0071E3;
+  color: #0071E3;
+}
+
+.file-queue__convert-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  justify-content: center;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  background: #0071E3;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #FFFFFF;
+  transition: all 150ms ease;
+}
+
+.file-queue__convert-btn:hover {
+  background: #005BB5;
+}
+
+.file-queue__convert-btn--download {
+  background: #34C759;
+}
+
+.file-queue__convert-btn--download:hover {
+  background: #2EAD4E;
+}

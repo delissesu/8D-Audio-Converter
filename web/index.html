@@ -1,9 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>8D Studio</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#0F172A">
+    <title>8D Audio Studio</title>
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="manifest.json">
     
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com" rel="preconnect" />
@@ -192,6 +196,11 @@
         .dark .waveform-bar.bg-accent { background-color: #0071E3; }
         
     </style>
+    <link rel="stylesheet" href="css/components/preset-picker.css" />
+    <link rel="stylesheet" href="css/components/preview-toggle.css" />
+    <link rel="stylesheet" href="css/components/history-panel.css" />
+    <link rel="stylesheet" href="css/components/file-queue.css" />
+    <link rel="stylesheet" href="css/components/waveform-editor.css" />
 </head>
 <body class="bg-background-light dark:bg-background-dark min-h-screen text-primary dark:text-slate-100 font-display antialiased flex flex-col items-center overflow-x-hidden transition-colors duration-300">
 
@@ -224,6 +233,15 @@
                 <p id="drop-secondary-text" class="text-sm text-muted">MP3, WAV, FLAC, OGG, AAC, M4A</p>
             </div>
         </div>
+
+        <!-- Waveform Editor (Trim) -->
+        <div id="waveform-editor-slot" class="w-full"></div>
+
+        <!-- Preview Toggle -->
+        <div id="preview-toggle-slot"></div>
+
+        <!-- Batch File Queue -->
+        <div id="file-queue-slot" class="w-full"></div>
 
         <!-- Parameter Card -->
         <div class="bg-white rounded-2xl p-8 shadow-soft w-full flex flex-col gap-8 border border-white/50">
@@ -336,6 +354,9 @@
             </div>
         </div>
 
+        <!-- Preset Picker -->
+        <div id="preset-picker-slot" class="bg-white rounded-2xl p-6 shadow-soft w-full border border-white/50"></div>
+
         <!-- Primary Action -->
         <button id="btn-convert" class="w-full h-14 rounded-xl bg-muted text-white font-bold text-[15px] uppercase tracking-wider flex items-center justify-center gap-2 transition-all duration-300 opacity-50 cursor-not-allowed shadow-none group" disabled>
             <span>Render Spatial Audio</span>
@@ -344,6 +365,9 @@
         <p class="text-center text-xs text-muted mt-2">
             Estimated processing time: <span class="font-mono">~12s</span>
         </p>
+
+        <!-- Conversion History -->
+        <div id="history-panel-slot" class="w-full mt-6"></div>
     </main>
 
     <!-- Background Decoration -->

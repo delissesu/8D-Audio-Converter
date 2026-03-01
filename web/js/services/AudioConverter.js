@@ -61,4 +61,20 @@ export class AudioConverter {
     if (filename) url += `?name=${encodeURIComponent(filename)}`;
     return url;
   }
+
+  /**
+   * Generate a share link for a completed job.
+   * @param {string} jobId
+   * @returns {Promise<{ shareUrl: string, expiresAt: string }>}
+   */
+  async createShareLink(jobId) {
+    const response = await fetch(`${this.#baseUrl}/api/share/${jobId}`, {
+      method: "POST"
+    });
+    if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || `Server error: ${response.status}`);
+    }
+    return response.json();
+  }
 }

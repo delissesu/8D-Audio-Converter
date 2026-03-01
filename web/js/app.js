@@ -1,6 +1,21 @@
 import { AudioConverter } from "./services/AudioConverter.js";
+import { PresetPickerComponent } from "./components/PresetPickerComponent.js";
+import { PresetManager } from "./services/PresetManager.js";
+import { RealtimePreview } from "./services/RealtimePreview.js";
+import { PreviewToggleComponent } from "./components/PreviewToggleComponent.js";
+import { HistoryPanelComponent } from "./components/HistoryPanelComponent.js";
+import { FileQueueComponent } from "./components/FileQueueComponent.js";
+import { WaveformEditorComponent } from "./components/WaveformEditorComponent.js";
+import { BrowserDSP } from "./services/BrowserDSP.js";
+import { EventBus } from "./core/EventBus.js";
 
 const converter = new AudioConverter("");
+const bus = EventBus.getInstance();
+const browserDSP = new BrowserDSP();
+
+// Global trim state
+let currentTrimStart = 0;
+let currentTrimEnd = 0;
 
 // ── Security helpers ────────────────────────────────────────────
 function escapeHTML(str) {
@@ -85,6 +100,7 @@ const iconPause = document.getElementById('icon-pause');
 const volumeSlider = document.getElementById('volume-slider');
 const volumeTrack = document.getElementById('volume-track');
 const btnDownload = document.getElementById('btn-download');
+const btnShare = document.getElementById('btn-share');
 const btnRestart = document.getElementById('btn-restart');
 const resultSettings = document.getElementById('result-settings');
 const waveformBars = document.querySelectorAll('#waveform-container .waveform-bar');
@@ -131,11 +147,20 @@ function showView(viewName) {
 
 dropZone.addEventListener('drop', e => {
     const files = e.dataTransfer.files;
-    if (files.length) handleFile(files[0]);
+    if (files.length > 1) {
+        // Multi-file drop → batch queue
+        fileQueue.addFiles(files);
+    } else if (files.length === 1) {
+        handleFile(files[0]);
+    }
 });
 
 audioInput.addEventListener('change', () => {
-    if (audioInput.files.length) handleFile(audioInput.files[0]);
+    if (audioInput.files.length > 1) {
+        fileQueue.addFiles(audioInput.files);
+    } else if (audioInput.files.length === 1) {
+        handleFile(audioInput.files[0]);
+    }
 });
 
 function handleFile(file) {
@@ -153,6 +178,7 @@ function handleFile(file) {
     btnConvert.removeAttribute('disabled');
     btnConvert.classList.remove('opacity-50', 'cursor-not-allowed', 'bg-muted');
     btnConvert.classList.add('bg-primary', 'hover:bg-primary-hover', 'shadow-lg');
+    bus.emit('file:selected', file);
 }
 
 // Sliders formatting
@@ -164,28 +190,32 @@ function updateSliderTrack(slider, track, reverse = false) {
 
 speedSlider.addEventListener('input', () => {
     speedVal.textContent = parseFloat(speedSlider.value).toFixed(1) + 's';
-    // For speed, 1 is fast, 10 is slow. In original design, 8s track was large.
     updateSliderTrack(speedSlider, speedTrack);
+    updatePreviewIfPlaying();
 });
 
 reverbSlider.addEventListener('input', () => {
     reverbVal.textContent = reverbSlider.value + '%';
     updateSliderTrack(reverbSlider, reverbTrack);
+    updatePreviewIfPlaying();
 });
 
 crossfeedSlider.addEventListener('input', () => {
     crossfeedVal.textContent = crossfeedSlider.value + '%';
     updateSliderTrack(crossfeedSlider, crossfeedTrack);
+    updatePreviewIfPlaying();
 });
 
 depthSlider.addEventListener('input', () => {
     depthVal.textContent = depthSlider.value + '%';
     updateSliderTrack(depthSlider, depthTrack);
+    updatePreviewIfPlaying();
 });
 
 dampingSlider.addEventListener('input', () => {
     dampingVal.textContent = dampingSlider.value + '%';
     updateSliderTrack(dampingSlider, dampingTrack);
+    updatePreviewIfPlaying();
 });
 
 // Init tracks
@@ -194,6 +224,139 @@ updateSliderTrack(reverbSlider, reverbTrack);
 updateSliderTrack(crossfeedSlider, crossfeedTrack);
 updateSliderTrack(depthSlider, depthTrack);
 updateSliderTrack(dampingSlider, dampingTrack);
+
+// ── Preset System ───────────────────────────────────────────────
+
+/**
+ * Read current slider positions and return backend-ready params.
+ * Speed: slider value in seconds → Hz = 1/seconds
+ * Others: slider 0–100 → 0.0–1.0
+ */
+function getCurrentParams() {
+  const speedSeconds = parseFloat(speedSlider.value);
+  return {
+    pan_speed:  Math.min(2.0, Math.max(0.01, 1.0 / speedSeconds)),
+    pan_depth:  depthSlider.value / 100,
+    room_size:  reverbSlider.value / 100,
+    wet_level:  crossfeedSlider.value / 100,
+    damping:    dampingSlider.value / 100,
+  };
+}
+
+/**
+ * Apply preset params (backend-ready) to the slider UI.
+ * Reverse-maps Hz → seconds, 0–1 → 0–100.
+ */
+function applyPresetToSliders(params) {
+  // Speed: Hz → seconds.  Hz = 1/s → s = 1/Hz
+  const seconds = Math.min(10, Math.max(1, Math.round((1.0 / params.pan_speed) * 2) / 2));
+  speedSlider.value = seconds;
+  speedVal.textContent = parseFloat(seconds).toFixed(1) + 's';
+  updateSliderTrack(speedSlider, speedTrack);
+
+  // Depth: 0–1 → 0–100
+  depthSlider.value = Math.round(params.pan_depth * 100);
+  depthVal.textContent = depthSlider.value + '%';
+  updateSliderTrack(depthSlider, depthTrack);
+
+  // Room size: 0–1 → 0–100
+  reverbSlider.value = Math.round(params.room_size * 100);
+  reverbVal.textContent = reverbSlider.value + '%';
+  updateSliderTrack(reverbSlider, reverbTrack);
+
+  // Wet level (crossfeed): 0–1 → 0–100
+  crossfeedSlider.value = Math.round(params.wet_level * 100);
+  crossfeedVal.textContent = crossfeedSlider.value + '%';
+  updateSliderTrack(crossfeedSlider, crossfeedTrack);
+
+  // Damping: 0–1 → 0–100
+  dampingSlider.value = Math.round(params.damping * 100);
+  dampingVal.textContent = dampingSlider.value + '%';
+  updateSliderTrack(dampingSlider, dampingTrack);
+}
+
+// Mount Preset Picker
+const presetPicker = new PresetPickerComponent();
+const presetSlot = document.getElementById('preset-picker-slot');
+if (presetSlot) {
+  presetPicker.mount(presetSlot);
+}
+
+// Mount History Panel
+const historyPanel = new HistoryPanelComponent();
+const historySlot = document.getElementById('history-panel-slot');
+if (historySlot) {
+  historyPanel.mount(historySlot);
+}
+
+// Mount File Queue (Batch)
+const fileQueue = new FileQueueComponent();
+const fileQueueSlot = document.getElementById('file-queue-slot');
+if (fileQueueSlot) {
+  fileQueue.mount(fileQueueSlot);
+}
+
+// Mount Waveform Editor (Trim)
+const waveformEditor = new WaveformEditorComponent();
+const waveformSlot = document.getElementById('waveform-editor-slot');
+if (waveformSlot) {
+  waveformEditor.mount(waveformSlot);
+}
+
+// Listen for trim changes
+bus.on('trim:changed', ({ start, end }) => {
+  currentTrimStart = start;
+  currentTrimEnd = end;
+});
+
+// Listen for preset:loaded → update sliders
+bus.on('preset:loaded', (params) => {
+  applyPresetToSliders(params);
+});
+
+// Listen for preset:request-params → respond with current slider values
+bus.on('preset:request-params', () => {
+  bus.emit('preset:request-params-response', getCurrentParams());
+});
+
+// Auto-load preset from URL (share link)
+const urlPreset = PresetManager.fromUrl();
+if (urlPreset) {
+  applyPresetToSliders(urlPreset);
+}
+
+// ── Real-Time Preview System ────────────────────────────────────
+const realtimePreview = new RealtimePreview();
+const previewToggle = new PreviewToggleComponent();
+const previewToggleSlot = document.getElementById('preview-toggle-slot');
+if (previewToggleSlot) {
+  previewToggle.mount(previewToggleSlot);
+}
+
+// Handle preview start: load excerpt then play with current params
+bus.on('preview:start', async () => {
+  if (!selectedFile) return;
+  try {
+    await realtimePreview.loadExcerpt(selectedFile);
+    bus.emit('preview:loaded');
+    realtimePreview.play(getCurrentParams());
+  } catch (err) {
+    console.warn('Preview failed:', err);
+    bus.emit('preview:error');
+  }
+});
+
+// Handle preview stop
+bus.on('preview:stop', () => {
+  realtimePreview.stop();
+});
+
+// Live-update preview when sliders change
+function updatePreviewIfPlaying() {
+  if (realtimePreview.isPlaying) {
+    realtimePreview.updateParams(getCurrentParams());
+  }
+}
 
 // Convert Action
 btnConvert.addEventListener('click', async () => {
@@ -219,14 +382,36 @@ btnConvert.addEventListener('click', async () => {
         room: reverbSlider.value / 100,
         depth: depthSlider.value / 100,
         wet: crossfeedSlider.value / 100,
-        damping: dampingSlider.value / 100
+        damping: dampingSlider.value / 100,
+        trim_start: currentTrimStart,
+        trim_end: currentTrimEnd,
     };
 
     try {
         showView('processing');
-        startProgressAnim("Uploading audio...");
-        currentJobId = await converter.startConversion(selectedFile, selectedFormat, params);
-        pollStatus(currentJobId, selectedFormat);
+
+        // Size-based routing: files < 10MB → in-browser DSP
+        if (browserDSP.shouldProcessLocally(selectedFile) && selectedFormat === 'wav') {
+            startProgressAnim("Processing in browser...");
+            const dspParams = {
+                pan_speed: panSpeedHz,
+                pan_depth: params.depth,
+                room_size: params.room,
+                wet_level: params.wet,
+                damping: params.damping,
+            };
+            const wavBlob = await browserDSP.process(selectedFile, dspParams, (pct) => {
+                updateProgressBar(pct);
+            });
+            // Create a download URL from the blob
+            const url = URL.createObjectURL(wavBlob);
+            const baseName = selectedFile.name.replace(/\.[^.]+$/, '');
+            finishConversionLocal(url, baseName + '_8d.wav', selectedFile, selectedFormat);
+        } else {
+            startProgressAnim("Uploading audio...");
+            currentJobId = await converter.startConversion(selectedFile, selectedFormat, params);
+            pollStatus(currentJobId, selectedFormat);
+        }
     } catch (err) {
         showError(err.message, "ERR_UPLOAD");
     } finally {
@@ -248,6 +433,13 @@ function startProgressAnim(text) {
     statusDetail.textContent = text;
     statusDetail.style.opacity = '1';
     progressCircle.style.strokeDashoffset = circumference;
+}
+
+function updateProgressBar(pct) {
+    const offset = circumference - (pct / 100) * circumference;
+    if (progressCircle.style.strokeDashoffset !== `${offset}px`) {
+        progressCircle.style.strokeDashoffset = offset;
+    }
 }
 
 function stopPolling() {
@@ -374,13 +566,113 @@ function finishConversion(jobId, format) {
         const a = document.createElement('a');
         a.href = downloadUrl;
         a.download = finalFilename;
+        document.body.appendChild(a);
         a.click();
+        document.body.removeChild(a);
     };
+
+    if (btnShare) {
+        // Reset share button
+        btnShare.innerHTML = '<span class="material-symbols-outlined mr-2">share</span>Share Link';
+        btnShare.disabled = false;
+        
+        btnShare.onclick = async () => {
+            try {
+                btnShare.disabled = true;
+                btnShare.innerHTML = '<span class="material-symbols-outlined mr-2 animate-spin">refresh</span>Generating...';
+                
+                const data = await converter.createShareLink(jobId);
+                await navigator.clipboard.writeText(data.shareUrl);
+                
+                btnShare.innerHTML = '<span class="material-symbols-outlined mr-2">check</span>Copied!';
+                btnShare.classList.add('bg-green-100', 'text-green-700', 'border-green-200');
+                
+                setTimeout(() => {
+                    btnShare.innerHTML = '<span class="material-symbols-outlined mr-2">share</span>Share Link';
+                    btnShare.classList.remove('bg-green-100', 'text-green-700', 'border-green-200');
+                    btnShare.disabled = false;
+                }, 3000);
+            } catch (err) {
+                console.error("Share failed", err);
+                btnShare.innerHTML = '<span class="material-symbols-outlined mr-2">error</span>Failed';
+                setTimeout(() => {
+                    btnShare.innerHTML = '<span class="material-symbols-outlined mr-2">share</span>Share Link';
+                    btnShare.disabled = false;
+                }, 2000);
+            }
+        };
+    }
 
     setPlayingState(false);
     volumeSlider.value = 0.8;
     audioPlayer.volume = 0.8;
     updateSliderTrack(volumeSlider, volumeTrack);
+
+    // Emit conversion complete event for HistoryManager
+    bus.emit('conversion:complete', {
+        filename: baseName,
+        format: format,
+        url: downloadUrl,
+        size: 'Pending', // Or actual size if you calculate it synchronously
+        expiry: Date.now() + (24 * 60 * 60 * 1000) // 24 hours
+    });
+
+    showView('result');
+}
+
+function finishConversionLocal(url, finalFilename, file, format) {
+    resultFilename.textContent = finalFilename;
+    const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+    resultSize.textContent = `${sizeMb} MB (Local)`;
+
+    resultSettings.innerHTML = `
+        <span>SPEED: ${parseFloat(speedSlider.value).toFixed(1)}s</span><span class="text-border-color">|</span>
+        <span>DEPTH: ${depthSlider.value}%</span><span class="text-border-color">|</span>
+        <span>REVERB: ${reverbSlider.value}%</span><span class="text-border-color">|</span>
+        <span>X-FEED: ${crossfeedSlider.value}%</span><span class="text-border-color">|</span>
+        <span>DAMPING: ${dampingSlider.value}%</span>
+    `;
+
+    if (audioPlayer) {
+        audioPlayer.pause();
+        audioPlayer.removeAttribute('src');
+        audioPlayer.load();
+        audioPlayer = null;
+    }
+    if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+    }
+
+    decodeAndCacheAudio(url).then(() => updatePlayheadBar(0));
+
+    audioPlayer = new Audio(url);
+    audioPlayer.addEventListener('loadedmetadata', () => updateTimeDisplay(0, audioPlayer.duration));
+    audioPlayer.addEventListener('timeupdate', () => updateTimeDisplay(audioPlayer.currentTime, audioPlayer.duration));
+    audioPlayer.addEventListener('ended', () => setPlayingState(false));
+
+    btnDownload.onclick = () => {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = finalFilename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    };
+
+    if (btnShare) {
+        btnShare.disabled = true;
+        btnShare.title = "Share link is only available for cloud conversions";
+        btnShare.innerHTML = '<span class="material-symbols-outlined mr-2">cloud_off</span>Local Output';
+    }
+
+    bus.emit('conversion:complete', {
+        filename: finalFilename.replace(/\.[^/.]+$/, ""),
+        format: format,
+        url: url,
+        size: `${sizeMb} MB`,
+        expiry: Date.now() + (24 * 60 * 60 * 1000)
+    });
 
     showView('result');
 }
@@ -622,4 +914,7 @@ function resetUpload() {
     btnConvert.setAttribute('disabled', 'true');
     btnConvert.classList.add('opacity-50', 'cursor-not-allowed', 'bg-muted');
     btnConvert.classList.remove('bg-primary', 'hover:bg-primary-hover', 'shadow-lg');
+    // Stop and cleanup preview
+    realtimePreview.teardown();
+    bus.emit('app:reset');
 }
