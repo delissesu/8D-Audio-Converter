@@ -1,6 +1,8 @@
 # server.py
 import os
+import re
 import uuid
+import logging
 import threading
 import tempfile
 from pathlib import Path
@@ -11,29 +13,117 @@ from flask_cors import CORS
 from converter.core import convert_to_8d
 from converter.utils import SUPPORTED_OUTPUT_FORMATS
 
-app = Flask(__name__, static_folder="web", static_url_path="")
-CORS(app)
+# ── Logging ──────────────────────────────────────────────────────────
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+)
+logger = logging.getLogger("8d_converter")
 
-# In-memory job store — maps job_id → job state dict
-# Structure: { status, progress, step, output_path, error }
-_jobs : dict = {}
+# ── Flask app ────────────────────────────────────────────────────────
+app = Flask(__name__, static_folder="web", static_url_path="")
+
+# P0: Upload size limit (100 MB hard cap)
+app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024
+
+# P1: Restrict CORS to own origin
+CORS(app, resources={
+    r"/convert":    {"origins": ["http://localhost:5000"]},
+    r"/status/*":   {"origins": ["http://localhost:5000"]},
+    r"/download/*": {"origins": ["http://localhost:5000"]},
+})
+
+# P1: Load secret key from env or generate random
+app.config["SECRET_KEY"] = os.environ.get("FLASK_SECRET_KEY") or os.urandom(32)
+
+
+# ════════════════════════════════════════════════════════════════════
+# Security helpers
+# ════════════════════════════════════════════════════════════════════
+
+# P0: Magic bytes for known audio formats
+AUDIO_MAGIC_BYTES: dict[bytes, str] = {
+    b"\xff\xfb":              ".mp3",  # MP3 (MPEG layer 3)
+    b"\xff\xf3":              ".mp3",
+    b"\xff\xf2":              ".mp3",
+    b"ID3":                   ".mp3",  # MP3 with ID3 tag
+    b"RIFF":                  ".wav",  # WAV
+    b"fLaC":                  ".flac", # FLAC
+    b"OggS":                  ".ogg",  # OGG
+    b"\x00\x00\x00\x20ftyp": ".m4a",
+    b"\x00\x00\x00\x1cftyp": ".m4a",
+}
+
+
+def _validate_magic_bytes(file_bytes: bytes) -> bool:
+    """Return True only if the file starts with a known audio signature."""
+    for magic in AUDIO_MAGIC_BYTES:
+        if file_bytes[:len(magic)] == magic:
+            return True
+    return False
+
+
+def _sanitize_filename(name: str) -> str:
+    """Strip path components, control chars, and limit length."""
+    name = Path(name).name                        # strip directory traversal
+    name = re.sub(r"[^\w\s\-.]", "", name)        # only safe chars
+    name = re.sub(r"\.{2,}", ".", name)            # no double-extension tricks
+    return name[:128].strip()
+
+
+def _is_valid_job_id(job_id: str) -> bool:
+    """Return True only for valid UUID4 strings."""
+    try:
+        val = uuid.UUID(job_id, version=4)
+        return str(val) == job_id
+    except ValueError:
+        return False
+
+
+SAFE_TEMP_DIR: str = os.path.realpath(tempfile.gettempdir())
+
+
+def _is_safe_path(path: str) -> bool:
+    """Return True only if path resolves inside the OS temp directory."""
+    resolved = os.path.realpath(path)
+    return resolved.startswith(SAFE_TEMP_DIR + os.sep)
+
+
+def _safe_float(value, default: float, min_v: float, max_v: float) -> float:
+    """Parse float from form input, clamp to valid range, never raise."""
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return default
+    return max(min_v, min(max_v, v))
+
+
+# P0: Strict output format whitelist
+ALLOWED_OUTPUT_FORMATS: frozenset = frozenset({"mp3", "wav", "flac", "ogg", "m4a"})
+
+MAX_UPLOAD_BYTES: int = 100 * 1024 * 1024  # 100 MB
+
+
+# ════════════════════════════════════════════════════════════════════
+# In-memory job store
+# ════════════════════════════════════════════════════════════════════
+_jobs: dict = {}
 
 
 def _run_conversion(job_id: str, input_path: str, output_path: str, params: dict) -> None:
     """Background thread target: run pipeline and update job state."""
 
     class _JobProgressCallback:
-        """Adapter: feeds pipeline step updates into the job store. (DIP)"""
-        def __init__(self, job_id: str) -> None:
-            self.job_id    : str = job_id
-            self.steps     : list[str] = [
+        """Adapter: feeds pipeline step updates into the job store."""
+        def __init__(self, jid: str) -> None:
+            self.job_id = jid
+            self.steps  = [
                 "Loading audio file",
                 "Applying auto-panning",
                 "Applying reverb",
                 "Normalizing audio",
                 "Exporting to target format",
             ]
-            self.current   : int = 0
 
         def on_step(self, step_index: int) -> None:
             _jobs[self.job_id]["progress"] = int((step_index / len(self.steps)) * 100)
@@ -55,13 +145,26 @@ def _run_conversion(job_id: str, input_path: str, output_path: str, params: dict
         _jobs[job_id]["status"]      = "done"
         _jobs[job_id]["progress"]    = 100
         _jobs[job_id]["output_path"] = output_path
+        logger.info("job=%s completed", job_id[:8])
     except Exception as e:
         _jobs[job_id]["status"] = "error"
         _jobs[job_id]["error"]  = str(e)
+        logger.error("job=%s failed: %s", job_id[:8], e)
+        # Clean up output file on error
+        if os.path.exists(output_path):
+            try:
+                os.unlink(output_path)
+            except OSError:
+                pass
     finally:
+        # Always clean up input temp file
         if os.path.exists(input_path):
             os.unlink(input_path)
 
+
+# ════════════════════════════════════════════════════════════════════
+# Routes
+# ════════════════════════════════════════════════════════════════════
 
 @app.route("/")
 def index():
@@ -86,36 +189,71 @@ def start_conversion():
     if "file" not in request.files:
         return jsonify({"error": "No file uploaded."}), 400
 
-    audio_file  = request.files["file"]
-    out_format  = request.form.get("format", "wav").lower().strip(".")
+    audio_file = request.files["file"]
 
-    if f".{out_format}" not in SUPPORTED_OUTPUT_FORMATS:
-        return jsonify({"error": f"Unsupported format: .{out_format}"}), 400
+    # P0: Magic-byte validation — read header before saving
+    header = audio_file.read(16)
+    audio_file.seek(0)
 
-    params : dict = {
-        "speed"  : float(request.form.get("speed",   0.15)),
-        "depth"  : float(request.form.get("depth",   1.0)),
-        "room"   : float(request.form.get("room",    0.4)),
-        "wet"    : float(request.form.get("wet",     0.3)),
-        "damping": float(request.form.get("damping", 0.5)),
+    if not _validate_magic_bytes(header):
+        logger.warning(
+            "upload rejected ip=%s reason=invalid_magic_bytes",
+            request.remote_addr,
+        )
+        return jsonify({"error": "Unsupported or invalid audio file."}), 415
+
+    # P0: Strict output format whitelist
+    out_format = request.form.get("format", "wav").lower().strip().lstrip(".")
+    if out_format not in ALLOWED_OUTPUT_FORMATS:
+        return jsonify({"error": f"Format '{out_format}' is not allowed."}), 400
+
+    # P0: Safe float parsing with clamping
+    params: dict = {
+        "speed":   _safe_float(request.form.get("speed"),   0.15, 0.01, 2.0),
+        "depth":   _safe_float(request.form.get("depth"),   1.0,  0.0,  1.0),
+        "room":    _safe_float(request.form.get("room"),    0.4,  0.0,  1.0),
+        "wet":     _safe_float(request.form.get("wet"),     0.3,  0.0,  1.0),
+        "damping": _safe_float(request.form.get("damping"), 0.5,  0.0,  1.0),
     }
 
+    # P0: Sanitize filename — only use the extension from the safe name
+    safe_name  = _sanitize_filename(audio_file.filename or "upload.mp3")
+    suffix     = Path(safe_name).suffix or ".mp3"
+
     # Save uploaded file to temp location
-    suffix       : str = Path(audio_file.filename).suffix or ".mp3"
     tmp_fd_in, tmp_in = tempfile.mkstemp(suffix=suffix)
     os.close(tmp_fd_in)
-    audio_file.save(tmp_in)
+    try:
+        audio_file.save(tmp_in)
+    except Exception:
+        if os.path.exists(tmp_in):
+            os.unlink(tmp_in)
+        raise
+
+    # P0: Post-save size check
+    actual_size = os.path.getsize(tmp_in)
+    if actual_size > MAX_UPLOAD_BYTES:
+        os.unlink(tmp_in)
+        return jsonify({"error": "File too large after save."}), 413
+    if actual_size == 0:
+        os.unlink(tmp_in)
+        return jsonify({"error": "Empty file uploaded."}), 400
+
+    logger.info(
+        "upload accepted ip=%s size=%dB format=%s",
+        request.remote_addr, actual_size, out_format,
+    )
 
     tmp_fd_out, tmp_out = tempfile.mkstemp(suffix=f".{out_format}")
     os.close(tmp_fd_out)
 
-    job_id : str = str(uuid.uuid4())
+    job_id: str = str(uuid.uuid4())
     _jobs[job_id] = {
-        "status"     : "queued",
-        "progress"   : 0,
-        "step"       : "Waiting to start",
+        "status":      "queued",
+        "progress":    0,
+        "step":        "Waiting to start",
         "output_path": tmp_out,
-        "error"      : None,
+        "error":       None,
     }
 
     thread = threading.Thread(
@@ -134,14 +272,18 @@ def get_status(job_id: str):
     GET /status/<jobId>
     Returns: { status, progress, step, error }
     """
+    # P0: Validate job ID as UUID4
+    if not _is_valid_job_id(job_id):
+        return jsonify({"error": "Invalid job ID."}), 400
+
     job = _jobs.get(job_id)
     if not job:
         return jsonify({"error": "Job not found."}), 404
     return jsonify({
-        "status"  : job["status"],
+        "status":   job["status"],
         "progress": job["progress"],
-        "step"    : job["step"],
-        "error"   : job["error"],
+        "step":     job["step"],
+        "error":    job["error"],
     })
 
 
@@ -151,25 +293,41 @@ def download_file(job_id: str):
     GET /download/<jobId>
     Returns the processed audio file as a binary download.
     """
+    # P0: Validate job ID as UUID4
+    if not _is_valid_job_id(job_id):
+        return jsonify({"error": "Invalid job ID."}), 400
+
     job = _jobs.get(job_id)
     if not job or job["status"] != "done":
         return jsonify({"error": "File not ready."}), 404
-    output_path : str = job["output_path"]
+
+    output_path: str = job["output_path"]
+
+    # P0: Path traversal defense — verify file is in temp dir
+    if not _is_safe_path(output_path):
+        logger.warning("path traversal attempt job=%s path=%s", job_id[:8], output_path)
+        return jsonify({"error": "Access denied."}), 403
+
     if not os.path.exists(output_path):
         return jsonify({"error": "Output file missing."}), 404
-    ext      : str = Path(output_path).suffix.lstrip(".")
-    mimetype : str = {
-        "mp3" : "audio/mpeg",
-        "wav" : "audio/wav",
+
+    ext: str = Path(output_path).suffix.lstrip(".")
+    mimetype: str = {
+        "mp3":  "audio/mpeg",
+        "wav":  "audio/wav",
         "flac": "audio/flac",
-        "ogg" : "audio/ogg",
-        "aac" : "audio/aac",
-        "m4a" : "audio/mp4",
+        "ogg":  "audio/ogg",
+        "aac":  "audio/aac",
+        "m4a":  "audio/mp4",
         "aiff": "audio/aiff",
     }.get(ext, "application/octet-stream")
-    
-    download_name = request.args.get("name", f"8d_audio.{ext}")
-    
+
+    # P1: Sanitize download name from query param
+    raw_name = request.args.get("name", f"8d_audio.{ext}")
+    download_name = _sanitize_filename(raw_name)
+    if not download_name:
+        download_name = f"8d_audio.{ext}"
+
     return send_file(
         output_path,
         mimetype=mimetype,
@@ -178,5 +336,59 @@ def download_file(job_id: str):
     )
 
 
+# ════════════════════════════════════════════════════════════════════
+# Error handlers & Security headers
+# ════════════════════════════════════════════════════════════════════
+
+@app.errorhandler(413)
+def request_entity_too_large(e):
+    return jsonify({"error": "File too large. Maximum size is 100 MB."}), 413
+
+
+@app.errorhandler(404)
+def not_found(e):
+    path = request.path
+    # Log suspicious path patterns
+    suspicious = any(p in path for p in ["..", "etc", "passwd", "wp-admin", ".env"])
+    if suspicious:
+        logger.warning("suspicious 404 ip=%s path=%s", request.remote_addr, path)
+    return jsonify({"error": "Not found."}), 404
+
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    """Generic handler — never leak internal details to client."""
+    logger.error("unhandled exception: %s", e, exc_info=True)
+    return jsonify({"error": "An internal error occurred."}), 500
+
+
+@app.after_request
+def set_security_headers(response):
+    """P1: Add security headers to every response."""
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data:; "
+        "media-src 'self' blob:; "
+        "connect-src 'self'; "
+        "object-src 'none'; "
+        "base-uri 'self';"
+    )
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = (
+        "camera=(), microphone=(), geolocation=(), payment=()"
+    )
+    return response
+
+
+# ════════════════════════════════════════════════════════════════════
+# Entry point
+# ════════════════════════════════════════════════════════════════════
+
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    debug_mode = os.environ.get("FLASK_DEBUG", "false").lower() == "true"
+    app.run(debug=debug_mode, port=5000)

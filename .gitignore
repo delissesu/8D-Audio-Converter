@@ -27,3 +27,12 @@ env/
 # OS
 .DS_Store
 Thumbs.db
+
+# Secrets & environment
+.env
+.env.*
+*.key
+*.pem
+
+# Temp files
+/tmp/

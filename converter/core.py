@@ -74,6 +74,15 @@ def convert_to_8d(
         # [1/5] Load audio
         pbar.set_description(steps[0])
         audio_segment : AudioSegment = AudioSegment.from_file(input_path)
+
+        # P2: Audio duration cap — prevent decompression bombs
+        duration_sec = len(audio_segment) / 1000.0
+        if duration_sec > 600:   # 10 minutes
+            raise ValueError(
+                f"Audio too long: {duration_sec:.0f}s (max 600s / 10 min).\n"
+                f"    → Use a shorter audio file."
+            )
+
         audio_segment = audio_segment.set_channels(2)  # Force stereo
 
         # Export to a temp WAV so soundfile can read it as numpy

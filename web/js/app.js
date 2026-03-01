@@ -2,6 +2,32 @@ import { AudioConverter } from "./services/AudioConverter.js";
 
 const converter = new AudioConverter("http://localhost:5000");
 
+// ── Security helpers ────────────────────────────────────────────
+function escapeHTML(str) {
+    const el = document.createElement("div");
+    el.appendChild(document.createTextNode(str));
+    return el.innerHTML;
+}
+
+const ALLOWED_TYPES = new Set([
+    "audio/mpeg", "audio/wav", "audio/x-wav", "audio/flac",
+    "audio/ogg", "audio/aac", "audio/x-m4a", "audio/mp4",
+]);
+const MAX_SIZE_BYTES = 100 * 1024 * 1024; // 100 MB
+
+function validateFile(file) {
+    if (!file.type || (!ALLOWED_TYPES.has(file.type) && !file.type.startsWith('audio/'))) {
+        return "Unsupported file type. Use MP3, WAV, FLAC, OGG, AAC, or M4A.";
+    }
+    if (file.size > MAX_SIZE_BYTES) {
+        return "File is too large. Maximum size is 100 MB.";
+    }
+    if (file.size === 0) {
+        return "File is empty.";
+    }
+    return null;
+}
+
 // --- DOM Elements ---
 // Views
 const views = {
@@ -113,11 +139,14 @@ audioInput.addEventListener('change', () => {
 });
 
 function handleFile(file) {
-    if (!file.type.startsWith('audio/')) {
-        alert("Please upload an audio file.");
+    // P1: Client-side file validation
+    const error = validateFile(file);
+    if (error) {
+        alert(error);
         return;
     }
     selectedFile = file;
+    // P1: Use textContent (safe) — never innerHTML with user data
     dropPrimaryText.textContent = file.name;
     dropSecondaryText.textContent = (file.size / (1024 * 1024)).toFixed(2) + " MB";
     dropPrimaryText.classList.add('text-accent');
