@@ -274,6 +274,24 @@
                     </div>
                 </div>
 
+                <!-- Pan Depth Slider -->
+                <div class="flex flex-col gap-3">
+                    <div class="flex justify-between items-end">
+                        <label class="text-sm font-medium text-primary" for="depth">Pan Depth</label>
+                        <span id="depth-val" class="font-mono text-xs font-medium text-primary">100%</span>
+                    </div>
+                    <div class="relative h-6 flex items-center">
+                        <div class="absolute w-full h-1 bg-border-color rounded-full overflow-hidden">
+                            <div id="depth-track" class="h-full bg-primary w-[100%] rounded-full"></div>
+                        </div>
+                        <input aria-label="Pan Depth" class="relative z-10 w-full" id="depth" max="100" min="0" type="range" value="100" />
+                    </div>
+                    <div class="flex justify-between text-[10px] text-muted font-mono uppercase tracking-widest px-1">
+                        <span>Center</span>
+                        <span>Full Sweep</span>
+                    </div>
+                </div>
+
                 <!-- Reverb Slider -->
                 <div class="flex flex-col gap-3">
                     <div class="flex justify-between items-end">
@@ -299,6 +317,20 @@
                             <div id="crossfeed-track" class="h-full bg-primary w-[15%] rounded-full"></div>
                         </div>
                         <input aria-label="Binaural Blend" class="relative z-10 w-full" id="crossfeed" max="100" min="0" type="range" value="15" />
+                    </div>
+                </div>
+
+                <!-- Reverb Damping Slider -->
+                <div class="flex flex-col gap-3">
+                    <div class="flex justify-between items-end">
+                        <label class="text-sm font-medium text-primary" for="damping">Reverb Damping</label>
+                        <span id="damping-val" class="font-mono text-xs font-medium text-primary">50%</span>
+                    </div>
+                    <div class="relative h-6 flex items-center">
+                        <div class="absolute w-full h-1 bg-border-color rounded-full overflow-hidden">
+                            <div id="damping-track" class="h-full bg-primary w-[50%] rounded-full"></div>
+                        </div>
+                        <input aria-label="Reverb Damping" class="relative z-10 w-full" id="damping" max="100" min="0" type="range" value="50" />
                     </div>
                 </div>
             </div>
@@ -453,10 +485,12 @@
             <!-- Meta settings box -->
             <div class="mt-8 px-8 flex flex-col items-center">
                 <p class="text-xs text-muted font-medium uppercase tracking-wider mb-2">Current Settings</p>
-                <div class="flex gap-4 text-[10px] sm:text-xs text-primary dark:text-slate-300 font-mono bg-background-light dark:bg-slate-900/50 px-4 py-2 rounded-lg" id="result-settings">
+                <div class="flex flex-wrap justify-center gap-x-4 gap-y-2 text-[10px] sm:text-xs text-primary dark:text-slate-300 font-mono bg-background-light dark:bg-slate-900/50 px-4 py-2 rounded-lg" id="result-settings">
                     <span id="set-speed">SPEED: 8.0s</span><span class="text-border-color">|</span>
+                    <span id="set-depth">DEPTH: 100%</span><span class="text-border-color">|</span>
                     <span id="set-reverb">REVERB: 20%</span><span class="text-border-color">|</span>
-                    <span id="set-xfeed">X-FEED: 15%</span>
+                    <span id="set-xfeed">X-FEED: 15%</span><span class="text-border-color">|</span>
+                    <span id="set-damping">DAMPING: 50%</span>
                 </div>
             </div>
         </div>

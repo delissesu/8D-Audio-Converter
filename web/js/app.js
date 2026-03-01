@@ -31,6 +31,14 @@ const crossfeedSlider = document.getElementById('crossfeed');
 const crossfeedVal = document.getElementById('crossfeed-val');
 const crossfeedTrack = document.getElementById('crossfeed-track');
 
+const depthSlider = document.getElementById('depth');
+const depthVal = document.getElementById('depth-val');
+const depthTrack = document.getElementById('depth-track');
+
+const dampingSlider = document.getElementById('damping');
+const dampingVal = document.getElementById('damping-val');
+const dampingTrack = document.getElementById('damping-track');
+
 // Processing View
 const progressCircle = document.getElementById('progress-circle');
 const statusDetail = document.getElementById('status-detail');
@@ -137,10 +145,22 @@ crossfeedSlider.addEventListener('input', () => {
     updateSliderTrack(crossfeedSlider, crossfeedTrack);
 });
 
+depthSlider.addEventListener('input', () => {
+    depthVal.textContent = depthSlider.value + '%';
+    updateSliderTrack(depthSlider, depthTrack);
+});
+
+dampingSlider.addEventListener('input', () => {
+    dampingVal.textContent = dampingSlider.value + '%';
+    updateSliderTrack(dampingSlider, dampingTrack);
+});
+
 // Init tracks
 updateSliderTrack(speedSlider, speedTrack);
 updateSliderTrack(reverbSlider, reverbTrack);
 updateSliderTrack(crossfeedSlider, crossfeedTrack);
+updateSliderTrack(depthSlider, depthTrack);
+updateSliderTrack(dampingSlider, dampingTrack);
 
 // Convert Action
 btnConvert.addEventListener('click', async () => {
@@ -164,9 +184,9 @@ btnConvert.addEventListener('click', async () => {
     const params = {
         speed: panSpeedHz,
         room: reverbSlider.value / 100,
-        depth: 1.0,
+        depth: depthSlider.value / 100,
         wet: crossfeedSlider.value / 100,
-        damping: 0.5
+        damping: dampingSlider.value / 100
     };
 
     try {
@@ -267,8 +287,10 @@ function finishConversion(jobId, format) {
     
     resultSettings.innerHTML = `
         <span>SPEED: ${parseFloat(speedSlider.value).toFixed(1)}s</span><span class="text-border-color">|</span>
+        <span>DEPTH: ${depthSlider.value}%</span><span class="text-border-color">|</span>
         <span>REVERB: ${reverbSlider.value}%</span><span class="text-border-color">|</span>
-        <span>X-FEED: ${crossfeedSlider.value}%</span>
+        <span>X-FEED: ${crossfeedSlider.value}%</span><span class="text-border-color">|</span>
+        <span>DAMPING: ${dampingSlider.value}%</span>
     `;
 
     // Properly clean up old audio player
