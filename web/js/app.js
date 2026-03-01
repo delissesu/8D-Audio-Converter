@@ -1,6 +1,10 @@
 import { AudioConverter } from "./services/AudioConverter.js";
+import { PresetPickerComponent } from "./components/PresetPickerComponent.js";
+import { PresetManager } from "./services/PresetManager.js";
+import { EventBus } from "./core/EventBus.js";
 
 const converter = new AudioConverter("");
+const bus = EventBus.getInstance();
 
 // ── Security helpers ────────────────────────────────────────────
 function escapeHTML(str) {
@@ -194,6 +198,79 @@ updateSliderTrack(reverbSlider, reverbTrack);
 updateSliderTrack(crossfeedSlider, crossfeedTrack);
 updateSliderTrack(depthSlider, depthTrack);
 updateSliderTrack(dampingSlider, dampingTrack);
+
+// ── Preset System ───────────────────────────────────────────────
+
+/**
+ * Read current slider positions and return backend-ready params.
+ * Speed: slider value in seconds → Hz = 1/seconds
+ * Others: slider 0–100 → 0.0–1.0
+ */
+function getCurrentParams() {
+  const speedSeconds = parseFloat(speedSlider.value);
+  return {
+    pan_speed:  Math.min(2.0, Math.max(0.01, 1.0 / speedSeconds)),
+    pan_depth:  depthSlider.value / 100,
+    room_size:  reverbSlider.value / 100,
+    wet_level:  crossfeedSlider.value / 100,
+    damping:    dampingSlider.value / 100,
+  };
+}
+
+/**
+ * Apply preset params (backend-ready) to the slider UI.
+ * Reverse-maps Hz → seconds, 0–1 → 0–100.
+ */
+function applyPresetToSliders(params) {
+  // Speed: Hz → seconds.  Hz = 1/s → s = 1/Hz
+  const seconds = Math.min(10, Math.max(1, Math.round((1.0 / params.pan_speed) * 2) / 2));
+  speedSlider.value = seconds;
+  speedVal.textContent = parseFloat(seconds).toFixed(1) + 's';
+  updateSliderTrack(speedSlider, speedTrack);
+
+  // Depth: 0–1 → 0–100
+  depthSlider.value = Math.round(params.pan_depth * 100);
+  depthVal.textContent = depthSlider.value + '%';
+  updateSliderTrack(depthSlider, depthTrack);
+
+  // Room size: 0–1 → 0–100
+  reverbSlider.value = Math.round(params.room_size * 100);
+  reverbVal.textContent = reverbSlider.value + '%';
+  updateSliderTrack(reverbSlider, reverbTrack);
+
+  // Wet level (crossfeed): 0–1 → 0–100
+  crossfeedSlider.value = Math.round(params.wet_level * 100);
+  crossfeedVal.textContent = crossfeedSlider.value + '%';
+  updateSliderTrack(crossfeedSlider, crossfeedTrack);
+
+  // Damping: 0–1 → 0–100
+  dampingSlider.value = Math.round(params.damping * 100);
+  dampingVal.textContent = dampingSlider.value + '%';
+  updateSliderTrack(dampingSlider, dampingTrack);
+}
+
+// Mount Preset Picker
+const presetPicker = new PresetPickerComponent();
+const presetSlot = document.getElementById('preset-picker-slot');
+if (presetSlot) {
+  presetPicker.mount(presetSlot);
+}
+
+// Listen for preset:loaded → update sliders
+bus.on('preset:loaded', (params) => {
+  applyPresetToSliders(params);
+});
+
+// Listen for preset:request-params → respond with current slider values
+bus.on('preset:request-params', () => {
+  bus.emit('preset:request-params-response', getCurrentParams());
+});
+
+// Auto-load preset from URL (share link)
+const urlPreset = PresetManager.fromUrl();
+if (urlPreset) {
+  applyPresetToSliders(urlPreset);
+}
 
 // Convert Action
 btnConvert.addEventListener('click', async () => {

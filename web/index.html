@@ -192,6 +192,7 @@
         .dark .waveform-bar.bg-accent { background-color: #0071E3; }
         
     </style>
+    <link rel="stylesheet" href="css/components/preset-picker.css" />
 </head>
 <body class="bg-background-light dark:bg-background-dark min-h-screen text-primary dark:text-slate-100 font-display antialiased flex flex-col items-center overflow-x-hidden transition-colors duration-300">
 
@@ -335,6 +336,9 @@
                 </div>
             </div>
         </div>
+
+        <!-- Preset Picker -->
+        <div id="preset-picker-slot" class="bg-white rounded-2xl p-6 shadow-soft w-full border border-white/50"></div>
 
         <!-- Primary Action -->
         <button id="btn-convert" class="w-full h-14 rounded-xl bg-muted text-white font-bold text-[15px] uppercase tracking-wider flex items-center justify-center gap-2 transition-all duration-300 opacity-50 cursor-not-allowed shadow-none group" disabled>

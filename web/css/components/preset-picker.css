@@ -1,0 +1,225 @@
+/* web/css/components/preset-picker.css
+   Styles for the PresetPickerComponent.
+   Uses Tailwind utility classes inline — this file provides
+   component-specific custom styles only. */
+
+/* ── Preset picker container ──────────────────────────────────── */
+.preset-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.preset-picker__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.preset-picker__title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #86868B;
+}
+
+/* ── Preset grid ─────────────────────────────────────────────── */
+.preset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+/* ── Individual preset chip ──────────────────────────────────── */
+.preset-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: #F5F5F7;
+  border: 1.5px solid transparent;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 150ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  position: relative;
+  overflow: hidden;
+}
+
+.preset-chip:hover {
+  background: #EBEBF0;
+  border-color: #D1D1D6;
+  transform: translateY(-1px);
+}
+
+.preset-chip:active {
+  transform: scale(0.98);
+}
+
+.preset-chip--active {
+  background: #E8F0FE;
+  border-color: #0071E3;
+  box-shadow: 0 0 0 1px rgba(0, 113, 227, 0.15);
+}
+
+.preset-chip--builtin .preset-chip__icon {
+  color: #0071E3;
+}
+
+.preset-chip__icon {
+  font-size: 16px;
+  color: #86868B;
+  flex-shrink: 0;
+}
+
+.preset-chip--active .preset-chip__icon {
+  color: #0071E3;
+}
+
+.preset-chip__name {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #1D1D1F;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+
+.preset-chip--active .preset-chip__name {
+  color: #0071E3;
+}
+
+/* ── Chip action buttons ─────────────────────────────────────── */
+.preset-chip__actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 150ms ease;
+  flex-shrink: 0;
+}
+
+.preset-chip:hover .preset-chip__actions {
+  opacity: 1;
+}
+
+.preset-chip__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #86868B;
+  font-size: 14px;
+  padding: 0;
+  transition: all 100ms ease;
+}
+
+.preset-chip__btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: #1D1D1F;
+}
+
+.preset-chip__btn--delete:hover {
+  background: rgba(255, 59, 48, 0.1);
+  color: #FF3B30;
+}
+
+/* ── Save preset section ─────────────────────────────────────── */
+.preset-save-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.preset-save-row__input {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 12px;
+  border: 1.5px solid #E5E5EA;
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  font-family: inherit;
+  color: #1D1D1F;
+  background: #FFFFFF;
+  outline: none;
+  transition: border-color 150ms ease;
+}
+
+.preset-save-row__input:focus {
+  border-color: #0071E3;
+  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.12);
+}
+
+.preset-save-row__input::placeholder {
+  color: #86868B;
+  font-weight: 400;
+}
+
+.preset-save-row__btn {
+  height: 36px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 150ms ease;
+  white-space: nowrap;
+  font-family: inherit;
+}
+
+.preset-save-row__btn--save {
+  background: #1D1D1F;
+  color: #FFFFFF;
+}
+
+.preset-save-row__btn--save:hover {
+  background: #333336;
+}
+
+.preset-save-row__btn--save:active {
+  transform: scale(0.97);
+}
+
+.preset-save-row__btn--cancel {
+  background: #F5F5F7;
+  color: #86868B;
+}
+
+.preset-save-row__btn--cancel:hover {
+  background: #EBEBF0;
+  color: #1D1D1F;
+}
+
+/* ── Copied toast ────────────────────────────────────────────── */
+.preset-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: #1D1D1F;
+  color: #FFFFFF;
+  padding: 10px 20px;
+  border-radius: 12px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  opacity: 0;
+  pointer-events: none;
+  transition: all 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  z-index: 9999;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+.preset-toast--visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
