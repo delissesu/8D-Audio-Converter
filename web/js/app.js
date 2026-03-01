@@ -385,14 +385,25 @@ btnConvert.addEventListener('click', async () => {
     const speedSeconds = parseFloat(speedSlider.value);
     const panSpeedHz = Math.min(2.0, Math.max(0.01, 1.0 / speedSeconds));
 
+    // Read trim directly from waveformEditor at convert time for reliability
+    let trimStart = currentTrimStart;
+    let trimEnd = currentTrimEnd;
+    if (waveformEditor && typeof waveformEditor.getTrimValues === 'function') {
+        const trimVals = waveformEditor.getTrimValues();
+        if (trimVals && trimVals.start != null && trimVals.end != null) {
+            trimStart = trimVals.start;
+            trimEnd = trimVals.end;
+        }
+    }
+
     const params = {
         speed: panSpeedHz,
         room: reverbSlider.value / 100,
         depth: depthSlider.value / 100,
         wet: crossfeedSlider.value / 100,
         damping: dampingSlider.value / 100,
-        trim_start: currentTrimStart,
-        trim_end: currentTrimEnd,
+        trim_start: String(trimStart),
+        trim_end: String(trimEnd),
     };
 
     try {
@@ -408,8 +419,8 @@ btnConvert.addEventListener('click', async () => {
                 room_size: params.room,
                 wet_level: params.wet,
                 damping: params.damping,
-                trim_start: params.trim_start,
-                trim_end: params.trim_end
+                trim_start: trimStart,
+                trim_end: trimEnd
             };
             const wavBlob = await browserDSP.process(selectedFile, dspParams, (pct) => {
                 updateProgressBar(pct);
@@ -538,11 +549,12 @@ function finishConversion(jobId, format) {
         .finally(() => {
             // Emit conversion complete event for HistoryManager after size is known
             bus.emit('conversion:complete', {
+                jobId: jobId,
                 filename: baseName,
                 format: format,
-                url: downloadUrl,
+                downloadUrl: downloadUrl,
                 sizeMb: computedSizeMb,
-                expiry: Date.now() + (24 * 60 * 60 * 1000) // 24 hours
+                expiry: Date.now() + (30 * 60 * 1000) // 30 minutes (matches server TTL)
             });
         });
     
@@ -603,33 +615,87 @@ function finishConversion(jobId, format) {
         const shareStatus = document.getElementById('share-status');
 
         btnShare.onclick = async () => {
+            // Guard: ensure jobId is valid
+            if (!jobId) {
+                console.error("[Share] jobId is undefined — cannot create share link");
+                btnShare.innerHTML = '<span class="material-symbols-outlined mr-2">error</span>No Job ID';
+                setTimeout(() => {
+                    btnShare.innerHTML = '<span class="material-symbols-outlined mr-2">share</span>Share Link';
+                }, 2000);
+                return;
+            }
+
             try {
                 btnShare.disabled = true;
                 btnShare.innerHTML = '<span class="material-symbols-outlined mr-2 animate-spin">refresh</span>Generating...';
                 
+                // Step 1: Generate share link on the server
                 const data = await converter.createShareLink(jobId);
-                await navigator.clipboard.writeText(data.shareUrl);
+                const shareUrl = data.shareUrl;
+
+                // Step 2: Copy to clipboard with fallback
+                let copied = false;
+                try {
+                    if (navigator.clipboard && window.isSecureContext) {
+                        await navigator.clipboard.writeText(shareUrl);
+                        copied = true;
+                    }
+                } catch (_clipErr) {
+                    // Clipboard API failed — try fallback below
+                }
+
+                if (!copied) {
+                    // Fallback: use deprecated execCommand("copy")
+                    try {
+                        const ta = document.createElement("textarea");
+                        ta.value = shareUrl;
+                        ta.style.position = "fixed";
+                        ta.style.opacity = "0";
+                        document.body.appendChild(ta);
+                        ta.focus();
+                        ta.select();
+                        copied = document.execCommand("copy");
+                        document.body.removeChild(ta);
+                    } catch (_fallbackErr) {
+                        copied = false;
+                    }
+                }
                 
-                btnShare.innerHTML = '<span class="material-symbols-outlined mr-2">check</span>Copied!';
+                if (copied) {
+                    btnShare.innerHTML = '<span class="material-symbols-outlined mr-2">check</span>Copied!';
+                } else {
+                    // Could not copy — still show the URL so user can copy manually
+                    btnShare.innerHTML = '<span class="material-symbols-outlined mr-2">check</span>Link Ready';
+                }
                 btnShare.classList.add('bg-green-100', 'text-green-700', 'border-green-200');
 
                 if (shareStatus) {
-                    shareStatus.textContent = `Link expires at ${new Date(data.expiresAt).toLocaleTimeString()}`;
+                    const expiryText = data.expiresAt
+                        ? `Link expires at ${new Date(data.expiresAt).toLocaleTimeString()}`
+                        : '';
+                    const urlDisplay = copied ? expiryText : `${shareUrl}  —  ${expiryText}`;
+                    shareStatus.textContent = urlDisplay;
                     shareStatus.hidden = false;
+                    // Allow manual selection if clipboard failed
+                    if (!copied) shareStatus.style.userSelect = 'text';
                 }
                 
                 setTimeout(() => {
                     btnShare.innerHTML = '<span class="material-symbols-outlined mr-2">share</span>Share Link';
                     btnShare.classList.remove('bg-green-100', 'text-green-700', 'border-green-200');
                     btnShare.disabled = false;
-                }, 3000);
+                }, 4000);
             } catch (err) {
-                console.error("Share failed", err);
+                console.error("[Share] Error:", err.message);
                 btnShare.innerHTML = '<span class="material-symbols-outlined mr-2">error</span>Failed';
+                if (shareStatus) {
+                    shareStatus.textContent = `Error: ${err.message}`;
+                    shareStatus.hidden = false;
+                }
                 setTimeout(() => {
                     btnShare.innerHTML = '<span class="material-symbols-outlined mr-2">share</span>Share Link';
                     btnShare.disabled = false;
-                }, 2000);
+                }, 3000);
             }
         };
     }
@@ -691,10 +757,11 @@ function finishConversionLocal(url, finalFilename, file, format) {
     }
 
     bus.emit('conversion:complete', {
+        jobId: null,  // local conversions have no server job ID
         filename: finalFilename.replace(/\.[^/.]+$/, ""),
         format: format,
-        url: url,
-        size: `${sizeMb} MB`,
+        downloadUrl: url,
+        sizeMb: parseFloat(sizeMb),
         expiry: Date.now() + (24 * 60 * 60 * 1000)
     });
 

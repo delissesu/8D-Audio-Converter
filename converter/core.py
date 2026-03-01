@@ -124,16 +124,28 @@ def convert_to_8d(
         samples = np.column_stack([samples, samples])
 
     # Apply trim if specified
-    # Trim when: end > start AND end is non-zero (indicates real trim selection)
+    # Guard: trim_end=0 means "no trim" (use full file)
+    # Guard: trim_end must be strictly greater than trim_start
     total_dur = len(samples) / sr
+    t_start = max(0.0, float(trim_start) if trim_start else 0.0)
+    t_end_raw = float(trim_end) if trim_end else 0.0
+
+    # Normalize: 0 means end-of-file
+    t_end = t_end_raw if t_end_raw > 0 else total_dur
+
+    # Determine if we should trim:
+    #   - at least 0.1s difference between start and end
+    #   - the selection must differ from the full file by at least 0.5s
+    selection_dur = t_end - t_start
     should_trim = (
-        trim_end > trim_start
-        and trim_end > 0
-        and (trim_start > 0 or trim_end < total_dur - 0.01)
+        t_end > t_start + 0.1
+        and t_start < total_dur
+        and abs(selection_dur - total_dur) > 0.5
     )
+
     if should_trim:
-        start_frame = max(0, int(trim_start * sr))
-        end_frame = min(len(samples), int(trim_end * sr))
+        start_frame = max(0, int(t_start * sr))
+        end_frame = min(len(samples), int(t_end * sr))
         if end_frame > start_frame:
             samples = samples[start_frame:end_frame]
 

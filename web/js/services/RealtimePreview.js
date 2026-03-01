@@ -239,15 +239,20 @@ export class RealtimePreview {
    */
   #createImpulseResponse(roomSize, damping) {
     const sampleRate = this.#ctx.sampleRate;
-    const tailSeconds = 0.5 + roomSize * 3.5 * (1.0 - damping * 0.6);
-    const length = Math.floor(sampleRate * tailSeconds);
+    // Empirical calibration against pedalboard.Reverb output:
+    // room=0.0 → ~0.3s tail  |  room=0.4 → ~1.2s  |  room=0.9 → ~3.5s
+    const tailSeconds = 0.3 + roomSize * 3.2 * (1.2 - damping);
+    const length = Math.floor(sampleRate * Math.max(0.3, tailSeconds));
     const impulse = this.#ctx.createBuffer(2, length, sampleRate);
 
     for (let ch = 0; ch < 2; ch++) {
       const data = impulse.getChannelData(ch);
       for (let i = 0; i < length; i++) {
-        const decay = Math.pow(1.0 - damping * 0.8, (i / length) * 100);
-        data[i] = (Math.random() * 2 - 1) * decay;
+        const t     = i / length;
+        const decay = Math.pow(1.0 - damping * 0.85, t * 120);
+        // Add early reflections in first 5% of tail
+        const early = t < 0.05 ? (1.0 - t / 0.05) * 0.3 : 0;
+        data[i]     = (Math.random() * 2 - 1) * (decay + early);
       }
     }
 
