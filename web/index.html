@@ -193,6 +193,8 @@
         
     </style>
     <link rel="stylesheet" href="css/components/preset-picker.css" />
+    <link rel="stylesheet" href="css/components/preview-toggle.css" />
+    <link rel="stylesheet" href="css/components/history-panel.css" />
 </head>
 <body class="bg-background-light dark:bg-background-dark min-h-screen text-primary dark:text-slate-100 font-display antialiased flex flex-col items-center overflow-x-hidden transition-colors duration-300">
 
@@ -225,6 +227,9 @@
                 <p id="drop-secondary-text" class="text-sm text-muted">MP3, WAV, FLAC, OGG, AAC, M4A</p>
             </div>
         </div>
+
+        <!-- Preview Toggle -->
+        <div id="preview-toggle-slot"></div>
 
         <!-- Parameter Card -->
         <div class="bg-white rounded-2xl p-8 shadow-soft w-full flex flex-col gap-8 border border-white/50">
@@ -348,6 +353,9 @@
         <p class="text-center text-xs text-muted mt-2">
             Estimated processing time: <span class="font-mono">~12s</span>
         </p>
+
+        <!-- Conversion History -->
+        <div id="history-panel-slot" class="w-full mt-6"></div>
     </main>
 
     <!-- Background Decoration -->

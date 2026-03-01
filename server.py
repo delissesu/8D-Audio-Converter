@@ -13,6 +13,27 @@ from flask_cors import CORS
 from converter.core import convert_to_8d
 from converter.utils import SUPPORTED_OUTPUT_FORMATS, DEFAULT_PARAMS
 
+# Effect chain imports
+from infrastructure.audio.effects import (
+    Rotate8DEffect,
+    ReverbEffect,
+    StereoWidthEffect,
+    VinylWarmthEffect,
+)
+
+# ── Effect Registry ──────────────────────────────────────────────
+# Maps effect_id strings to effect class instances.
+# Only registered IDs are allowed from the frontend.
+EFFECT_REGISTRY = {
+    "8d_rotate":     Rotate8DEffect(),
+    "reverb":        ReverbEffect(),
+    "stereo_width":  StereoWidthEffect(),
+    "vinyl_warmth":  VinylWarmthEffect(),
+}
+
+# Default chain when no effects[] is specified
+DEFAULT_EFFECT_IDS = ["8d_rotate", "reverb"]
+
 # ── Logging ──────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
@@ -110,7 +131,7 @@ MAX_UPLOAD_BYTES: int = 100 * 1024 * 1024  # 100 MB
 _jobs: dict = {}
 
 
-def _run_conversion(job_id: str, input_path: str, output_path: str, params: dict) -> None:
+def _run_conversion(job_id: str, input_path: str, output_path: str, params: dict, effect_chain: list = None) -> None:
     """Background thread target: run pipeline and update job state."""
 
     class _JobProgressCallback:
@@ -135,6 +156,7 @@ def _run_conversion(job_id: str, input_path: str, output_path: str, params: dict
             wet_level   = params.get("wet",     DEFAULT_PARAMS["wet"]),
             damping     = params.get("damping", DEFAULT_PARAMS["damping"]),
             progress_callback = cb.on_step,
+            effect_chain = effect_chain,
         )
         _jobs[job_id]["status"]      = "done"
         _jobs[job_id]["progress"]    = 100
@@ -210,6 +232,25 @@ def start_conversion():
         "damping": _safe_float(request.form.get("damping"), DEFAULT_PARAMS["damping"], 0.0,  1.0),
     }
 
+    # Build effect chain from optional effects[] form field
+    effect_ids = request.form.getlist("effects[]")
+    if not effect_ids:
+        effect_ids = request.form.getlist("effects")
+    
+    effect_chain = None
+    if effect_ids:
+        # Validate: only registered IDs allowed
+        chain = []
+        for eid in effect_ids:
+            if eid in EFFECT_REGISTRY:
+                chain.append(EFFECT_REGISTRY[eid])
+            else:
+                return jsonify({"error": f"Unknown effect: '{eid}'."}), 400
+        effect_chain = chain
+    else:
+        # Use default chain
+        effect_chain = [EFFECT_REGISTRY[eid] for eid in DEFAULT_EFFECT_IDS]
+
     # P0: Sanitize filename — only use the extension from the safe name
     safe_name  = _sanitize_filename(audio_file.filename or "upload.mp3")
     suffix     = Path(safe_name).suffix or ".mp3"
@@ -252,7 +293,7 @@ def start_conversion():
 
     thread = threading.Thread(
         target=_run_conversion,
-        args=(job_id, tmp_in, tmp_out, params),
+        args=(job_id, tmp_in, tmp_out, params, effect_chain),
         daemon=True,
     )
     thread.start()

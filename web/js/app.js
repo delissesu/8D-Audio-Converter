@@ -1,6 +1,9 @@
 import { AudioConverter } from "./services/AudioConverter.js";
 import { PresetPickerComponent } from "./components/PresetPickerComponent.js";
 import { PresetManager } from "./services/PresetManager.js";
+import { RealtimePreview } from "./services/RealtimePreview.js";
+import { PreviewToggleComponent } from "./components/PreviewToggleComponent.js";
+import { HistoryPanelComponent } from "./components/HistoryPanelComponent.js";
 import { EventBus } from "./core/EventBus.js";
 
 const converter = new AudioConverter("");
@@ -157,6 +160,7 @@ function handleFile(file) {
     btnConvert.removeAttribute('disabled');
     btnConvert.classList.remove('opacity-50', 'cursor-not-allowed', 'bg-muted');
     btnConvert.classList.add('bg-primary', 'hover:bg-primary-hover', 'shadow-lg');
+    bus.emit('file:selected', file);
 }
 
 // Sliders formatting
@@ -168,28 +172,32 @@ function updateSliderTrack(slider, track, reverse = false) {
 
 speedSlider.addEventListener('input', () => {
     speedVal.textContent = parseFloat(speedSlider.value).toFixed(1) + 's';
-    // For speed, 1 is fast, 10 is slow. In original design, 8s track was large.
     updateSliderTrack(speedSlider, speedTrack);
+    updatePreviewIfPlaying();
 });
 
 reverbSlider.addEventListener('input', () => {
     reverbVal.textContent = reverbSlider.value + '%';
     updateSliderTrack(reverbSlider, reverbTrack);
+    updatePreviewIfPlaying();
 });
 
 crossfeedSlider.addEventListener('input', () => {
     crossfeedVal.textContent = crossfeedSlider.value + '%';
     updateSliderTrack(crossfeedSlider, crossfeedTrack);
+    updatePreviewIfPlaying();
 });
 
 depthSlider.addEventListener('input', () => {
     depthVal.textContent = depthSlider.value + '%';
     updateSliderTrack(depthSlider, depthTrack);
+    updatePreviewIfPlaying();
 });
 
 dampingSlider.addEventListener('input', () => {
     dampingVal.textContent = dampingSlider.value + '%';
     updateSliderTrack(dampingSlider, dampingTrack);
+    updatePreviewIfPlaying();
 });
 
 // Init tracks
@@ -256,6 +264,13 @@ if (presetSlot) {
   presetPicker.mount(presetSlot);
 }
 
+// Mount History Panel
+const historyPanel = new HistoryPanelComponent();
+const historySlot = document.getElementById('history-panel-slot');
+if (historySlot) {
+  historyPanel.mount(historySlot);
+}
+
 // Listen for preset:loaded → update sliders
 bus.on('preset:loaded', (params) => {
   applyPresetToSliders(params);
@@ -270,6 +285,39 @@ bus.on('preset:request-params', () => {
 const urlPreset = PresetManager.fromUrl();
 if (urlPreset) {
   applyPresetToSliders(urlPreset);
+}
+
+// ── Real-Time Preview System ────────────────────────────────────
+const realtimePreview = new RealtimePreview();
+const previewToggle = new PreviewToggleComponent();
+const previewToggleSlot = document.getElementById('preview-toggle-slot');
+if (previewToggleSlot) {
+  previewToggle.mount(previewToggleSlot);
+}
+
+// Handle preview start: load excerpt then play with current params
+bus.on('preview:start', async () => {
+  if (!selectedFile) return;
+  try {
+    await realtimePreview.loadExcerpt(selectedFile);
+    bus.emit('preview:loaded');
+    realtimePreview.play(getCurrentParams());
+  } catch (err) {
+    console.warn('Preview failed:', err);
+    bus.emit('preview:error');
+  }
+});
+
+// Handle preview stop
+bus.on('preview:stop', () => {
+  realtimePreview.stop();
+});
+
+// Live-update preview when sliders change
+function updatePreviewIfPlaying() {
+  if (realtimePreview.isPlaying) {
+    realtimePreview.updateParams(getCurrentParams());
+  }
 }
 
 // Convert Action
@@ -458,6 +506,16 @@ function finishConversion(jobId, format) {
     volumeSlider.value = 0.8;
     audioPlayer.volume = 0.8;
     updateSliderTrack(volumeSlider, volumeTrack);
+
+    // Emit conversion:complete for history panel
+    bus.emit('conversion:complete', {
+      jobId: jobId,
+      filename: finalFilename,
+      format: format,
+      sizeMb: selectedFile ? (selectedFile.size / (1024 * 1024)).toFixed(1) : '?',
+      elapsed: null,
+      downloadUrl: downloadUrl,
+    });
 
     showView('result');
 }
@@ -699,4 +757,7 @@ function resetUpload() {
     btnConvert.setAttribute('disabled', 'true');
     btnConvert.classList.add('opacity-50', 'cursor-not-allowed', 'bg-muted');
     btnConvert.classList.remove('bg-primary', 'hover:bg-primary-hover', 'shadow-lg');
+    // Stop and cleanup preview
+    realtimePreview.teardown();
+    bus.emit('app:reset');
 }
