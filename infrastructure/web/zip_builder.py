@@ -63,9 +63,11 @@ def build_batch_zip(results: list[dict], output_format: str) -> io.BytesIO:
         base_name = Path(base_name).stem
         arcname = f"{i:02d}_{base_name}_8d.{output_format}"
 
-        entries.append({
-            "path": output_path,
-            "name": arcname,
-        })
+        entries.append(
+            {
+                "path": output_path,
+                "name": arcname,
+            }
+        )
 
     return build_zip(entries)

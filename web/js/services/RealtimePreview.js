@@ -1,8 +1,6 @@
 // web/js/services/RealtimePreview.js
 // Browser-only 8D spatial audio preview using Web Audio API.
-// Plays a 10-second excerpt of the uploaded file with live panning via HRTF PannerNode.
-
-const EXCERPT_DURATION = 10; // seconds
+// Plays a smart-duration excerpt with live panning via AudioWorklet.
 
 export class RealtimePreview {
   /** @type {AudioContext|null} */
@@ -11,12 +9,8 @@ export class RealtimePreview {
   #buffer = null;
   /** @type {AudioBufferSourceNode|null} */
   #source = null;
-  /** @type {PannerNode|null} */
-  #panner = null;
-  /** @type {OscillatorNode|null} */
-  #lfo = null;
-  /** @type {GainNode|null} */
-  #lfoGain = null;
+  /** @type {AudioWorkletNode|null} */
+  #lfoNode = null;
   /** @type {ConvolverNode|null} */
   #reverb = null;
   /** @type {GainNode|null} */
@@ -25,13 +19,23 @@ export class RealtimePreview {
   #dryGain = null;
   /** @type {boolean} */
   #playing = false;
+  /** @type {boolean} */
+  #workletReady = false;
+
+  /** @type {number} */
+  #duration = 0;
 
   /**
-   * Decode and cache a 10-second excerpt of the file.
+   * Decode and cache a smart-duration excerpt of the file.
+   * Smart rules:
+   *   - File < 60s → preview the full file
+   *   - File >= 60s → 60s max preview
+   *   - If trim is active → start from trim.start
    * Must be called before play().
    * @param {File} file
+   * @param {{ start: number, end: number }} trim — current trim values in seconds
    */
-  async loadExcerpt(file) {
+  async loadExcerpt(file, trim = { start: 0, end: 0 }) {
     // Create or reuse AudioContext
     if (!this.#ctx || this.#ctx.state === "closed") {
       this.#ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -45,37 +49,60 @@ export class RealtimePreview {
     const arrayBuffer = await file.arrayBuffer();
     const fullBuffer = await this.#ctx.decodeAudioData(arrayBuffer);
 
-    // Trim to first 10 seconds
     const sampleRate = fullBuffer.sampleRate;
-    const excerptFrames = Math.min(
-      fullBuffer.length,
-      Math.floor(sampleRate * EXCERPT_DURATION)
-    );
+    const duration = fullBuffer.duration;
+
+    // Smart duration: cap at 60s
+    const maxPreviewDuration = 60;
+    const previewDuration = duration < maxPreviewDuration ? duration : maxPreviewDuration;
+
+    // Use trim start if active, otherwise start at 0
+    const previewStart = trim.start > 0 ? trim.start : 0;
+    const previewEnd = Math.min(previewStart + previewDuration, duration);
+
+    // Slice the decoded buffer to the preview window
+    const startFrame = Math.floor(previewStart * sampleRate);
+    const endFrame = Math.floor(previewEnd * sampleRate);
+    const frameCount = Math.max(1, endFrame - startFrame);
 
     this.#buffer = this.#ctx.createBuffer(
       fullBuffer.numberOfChannels,
-      excerptFrames,
+      frameCount,
       sampleRate
     );
 
     for (let ch = 0; ch < fullBuffer.numberOfChannels; ch++) {
       const srcData = fullBuffer.getChannelData(ch);
       const dstData = this.#buffer.getChannelData(ch);
-      dstData.set(srcData.subarray(0, excerptFrames));
+      dstData.set(srcData.subarray(startFrame, endFrame));
     }
+
+    this.#duration = previewEnd - previewStart;
   }
 
   /**
    * Start playing the cached excerpt with spatial effects.
+   * Uses AudioWorklet for sample-accurate LFO panning.
    * @param {object} params — { pan_speed, pan_depth, room_size, wet_level, damping }
    */
-  play(params) {
+  async play(params) {
+    this.stop();   // always stop first to prevent overlapping audio
     if (!this.#buffer || !this.#ctx) return;
-    if (this.#playing) this.stop();
 
     // Resume context (user gesture needed)
     if (this.#ctx.state === "suspended") {
-      this.#ctx.resume();
+      await this.#ctx.resume();
+    }
+
+    // Load AudioWorklet if not already loaded
+    if (!this.#workletReady) {
+      try {
+        await this.#ctx.audioWorklet.addModule("/js/worklets/lfo_panner.worklet.js");
+        this.#workletReady = true;
+      } catch (err) {
+        console.warn("AudioWorklet not available, preview disabled:", err);
+        return;
+      }
     }
 
     // ── Source ────────────────────────────────────────────────
@@ -83,26 +110,12 @@ export class RealtimePreview {
     this.#source.buffer = this.#buffer;
     this.#source.loop = true;
 
-    // ── HRTF Panner ──────────────────────────────────────────
-    this.#panner = this.#ctx.createPanner();
-    this.#panner.panningModel = "HRTF";
-    this.#panner.distanceModel = "inverse";
-    this.#panner.refDistance = 1;
-    this.#panner.maxDistance = 10000;
-    this.#panner.positionZ.value = 0;
-    this.#panner.positionY.value = 0;
-
-    // ── LFO drives panner.positionX ──────────────────────────
-    // OscillatorNode → GainNode → panner.positionX
-    this.#lfo = this.#ctx.createOscillator();
-    this.#lfo.type = "sine";
-    this.#lfo.frequency.value = params.pan_speed || 0.15;
-
-    this.#lfoGain = this.#ctx.createGain();
-    this.#lfoGain.gain.value = (params.pan_depth || 1.0) * 5; // scale depth to spatial range
-
-    this.#lfo.connect(this.#lfoGain);
-    this.#lfoGain.connect(this.#panner.positionX);
+    // ── LFO Panner (AudioWorklet — sample-accurate) ─────────
+    this.#lfoNode = new AudioWorkletNode(this.#ctx, "lfo-panner", {
+      outputChannelCount: [2],
+    });
+    this.#lfoNode.parameters.get("panSpeed").value = params.pan_speed || 0.15;
+    this.#lfoNode.parameters.get("panDepth").value = params.pan_depth || 1.0;
 
     // ── Simple convolver reverb (impulse response simulation) ─
     this.#dryGain = this.#ctx.createGain();
@@ -117,21 +130,20 @@ export class RealtimePreview {
     );
 
     // ── Signal chain ─────────────────────────────────────────
-    // Source → Panner → [Dry path → destination]
-    //                  → [Reverb → Wet gain → destination]
-    this.#source.connect(this.#panner);
+    // Source → LFO Panner → [Dry path → destination]
+    //                      → [Reverb → Wet gain → destination]
+    this.#source.connect(this.#lfoNode);
 
     // Dry path
-    this.#panner.connect(this.#dryGain);
+    this.#lfoNode.connect(this.#dryGain);
     this.#dryGain.connect(this.#ctx.destination);
 
     // Wet path (reverb)
-    this.#panner.connect(this.#reverb);
+    this.#lfoNode.connect(this.#reverb);
     this.#reverb.connect(this.#wetGain);
     this.#wetGain.connect(this.#ctx.destination);
 
     // Start
-    this.#lfo.start();
     this.#source.start();
     this.#playing = true;
 
@@ -145,6 +157,7 @@ export class RealtimePreview {
 
   /**
    * Update effect parameters live without restarting playback.
+   * Updates LFO speed/depth via AudioParam (sample-accurate).
    * @param {object} params — { pan_speed, pan_depth, room_size, wet_level, damping }
    */
   updateParams(params) {
@@ -152,14 +165,14 @@ export class RealtimePreview {
 
     const now = this.#ctx.currentTime;
 
-    // Update LFO frequency (pan speed)
-    if (this.#lfo && params.pan_speed !== undefined) {
-      this.#lfo.frequency.setValueAtTime(params.pan_speed, now);
-    }
-
-    // Update LFO gain (pan depth)
-    if (this.#lfoGain && params.pan_depth !== undefined) {
-      this.#lfoGain.gain.setValueAtTime(params.pan_depth * 5, now);
+    // Update LFO panner params via AudioParam (smooth, sample-accurate)
+    if (this.#lfoNode) {
+      if (params.pan_speed !== undefined) {
+        this.#lfoNode.parameters.get("panSpeed").setValueAtTime(params.pan_speed, now);
+      }
+      if (params.pan_depth !== undefined) {
+        this.#lfoNode.parameters.get("panDepth").setValueAtTime(params.pan_depth, now);
+      }
     }
 
     // Update wet/dry mix
@@ -185,16 +198,7 @@ export class RealtimePreview {
       }
     } catch { /* already stopped */ }
 
-    try {
-      if (this.#lfo) {
-        this.#lfo.stop();
-        this.#lfo.disconnect();
-        this.#lfo = null;
-      }
-    } catch { /* already stopped */ }
-
-    if (this.#lfoGain) { this.#lfoGain.disconnect(); this.#lfoGain = null; }
-    if (this.#panner) { this.#panner.disconnect(); this.#panner = null; }
+    if (this.#lfoNode) { this.#lfoNode.disconnect(); this.#lfoNode = null; }
     if (this.#reverb) { this.#reverb.disconnect(); this.#reverb = null; }
     if (this.#wetGain) { this.#wetGain.disconnect(); this.#wetGain = null; }
     if (this.#dryGain) { this.#dryGain.disconnect(); this.#dryGain = null; }
@@ -212,6 +216,7 @@ export class RealtimePreview {
     }
     this.#ctx = null;
     this.#buffer = null;
+    this.#workletReady = false;
   }
 
   /**
@@ -221,30 +226,28 @@ export class RealtimePreview {
     return this.#playing;
   }
 
-  // ── Private: synthetic impulse response ────────────────────
+  // ── Private helpers ────────────────────────────────────────
 
   /**
    * Create a synthetic reverb impulse response.
+   * Calibrated to approximate pedalboard.Reverb tail behavior:
+   *   room_size=0.4, damping=0.5 → ~1.2s tail
+   *   room_size=0.9, damping=0.3 → ~3.5s tail
    * @param {number} roomSize — 0.0–1.0
    * @param {number} damping — 0.0–1.0
    * @returns {ConvolverNode}
    */
   #createImpulseResponse(roomSize, damping) {
     const sampleRate = this.#ctx.sampleRate;
-    // Duration scales with room size: 0.5s to 4s
-    const duration = 0.5 + roomSize * 3.5;
-    const length = Math.floor(sampleRate * duration);
+    const tailSeconds = 0.5 + roomSize * 3.5 * (1.0 - damping * 0.6);
+    const length = Math.floor(sampleRate * tailSeconds);
     const impulse = this.#ctx.createBuffer(2, length, sampleRate);
 
     for (let ch = 0; ch < 2; ch++) {
       const data = impulse.getChannelData(ch);
       for (let i = 0; i < length; i++) {
-        // Exponential decay with damping
-        const decay = Math.exp(-i / (length * (0.2 + roomSize * 0.6)));
-        // High-frequency damping via simple smoothing
-        const dampFactor = 1.0 - damping * 0.7;
-        const noise = (Math.random() * 2 - 1) * dampFactor;
-        data[i] = noise * decay;
+        const decay = Math.pow(1.0 - damping * 0.8, (i / length) * 100);
+        data[i] = (Math.random() * 2 - 1) * decay;
       }
     }
 

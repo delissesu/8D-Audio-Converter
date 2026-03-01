@@ -103,7 +103,7 @@ export class HistoryPanelComponent {
             <div class="history-item__info">
               <span class="history-item__name" title="${escapeHTML(entry.filename)}">${escapeHTML(entry.filename)}</span>
               <span class="history-item__meta">
-                ${entry.format?.toUpperCase() || ""} • ${entry.sizeMb || "?"} MB • ${formatTimestamp(entry.timestamp)}
+                ${entry.format?.toUpperCase() || ""} • ${entry.sizeMb != null && !isNaN(entry.sizeMb) ? Number(entry.sizeMb).toFixed(1) + " MB" : "—"} • ${formatTimestamp(entry.timestamp)}
               </span>
             </div>
             <div class="history-item__actions">

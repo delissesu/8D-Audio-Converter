@@ -64,6 +64,17 @@ export class PreviewToggleComponent {
     this.#container = null;
   }
 
+  /**
+   * Force the toggle to inactive state (e.g., when conversion starts).
+   */
+  setInactive() {
+    if (this.#active) {
+      this.#active = false;
+      this.#loading = false;
+      this.#render();
+    }
+  }
+
   // ── Private ────────────────────────────────────────────────
 
   #render() {
@@ -94,6 +105,9 @@ export class PreviewToggleComponent {
         <span class="preview-toggle__label">${label}</span>
         ${this.#active ? '<span class="preview-toggle__pulse"></span>' : ''}
       </button>
+      <div style="font-size: 0.75rem; color: #9ca3af; margin-top: 0.5rem; text-align: center;">
+        Preview approximates the final output. Use headphones for best results.
+      </div>
     `;
 
     this.#attachListeners();

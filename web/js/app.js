@@ -337,9 +337,11 @@ if (previewToggleSlot) {
 bus.on('preview:start', async () => {
   if (!selectedFile) return;
   try {
-    await realtimePreview.loadExcerpt(selectedFile);
+    // Read latest trim values at preview start time
+    const trim = waveformEditor?.getTrimValues() ?? { start: 0, end: 0 };
+    await realtimePreview.loadExcerpt(selectedFile, trim);
     bus.emit('preview:loaded');
-    realtimePreview.play(getCurrentParams());
+    await realtimePreview.play(getCurrentParams());
   } catch (err) {
     console.warn('Preview failed:', err);
     bus.emit('preview:error');
@@ -349,6 +351,12 @@ bus.on('preview:start', async () => {
 // Handle preview stop
 bus.on('preview:stop', () => {
   realtimePreview.stop();
+});
+
+// Stop preview when conversion starts
+bus.on('conversion:start', () => {
+  realtimePreview.stop();
+  previewToggle.setInactive();
 });
 
 // Live-update preview when sliders change
@@ -389,6 +397,7 @@ btnConvert.addEventListener('click', async () => {
 
     try {
         showView('processing');
+        bus.emit('conversion:start');
 
         // Size-based routing: files < 10MB → in-browser DSP
         if (browserDSP.shouldProcessLocally(selectedFile) && selectedFormat === 'wav') {
@@ -399,6 +408,8 @@ btnConvert.addEventListener('click', async () => {
                 room_size: params.room,
                 wet_level: params.wet,
                 damping: params.damping,
+                trim_start: params.trim_start,
+                trim_end: params.trim_end
             };
             const wavBlob = await browserDSP.process(selectedFile, dspParams, (pct) => {
                 updateProgressBar(pct);
@@ -510,17 +521,30 @@ function finishConversion(jobId, format) {
     resultFilename.textContent = finalFilename;
     resultSize.textContent = "Loading...";
 
+    let computedSizeMb = null;
+
     // Fetch file size via HEAD request
     fetch(downloadUrl, { method: 'HEAD' })
         .then(res => {
             const bytes = parseInt(res.headers.get('content-length') || '0', 10);
             if (bytes > 0) {
-                resultSize.textContent = (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+                computedSizeMb = parseFloat((bytes / (1024 * 1024)).toFixed(1));
+                resultSize.textContent = computedSizeMb + ' MB';
             } else {
                 resultSize.textContent = 'Ready';
             }
         })
-        .catch(() => { resultSize.textContent = 'Ready'; });
+        .catch(() => { resultSize.textContent = 'Ready'; })
+        .finally(() => {
+            // Emit conversion complete event for HistoryManager after size is known
+            bus.emit('conversion:complete', {
+                filename: baseName,
+                format: format,
+                url: downloadUrl,
+                sizeMb: computedSizeMb,
+                expiry: Date.now() + (24 * 60 * 60 * 1000) // 24 hours
+            });
+        });
     
     resultSettings.innerHTML = `
         <span>SPEED: ${parseFloat(speedSlider.value).toFixed(1)}s</span><span class="text-border-color">|</span>
@@ -576,6 +600,8 @@ function finishConversion(jobId, format) {
         btnShare.innerHTML = '<span class="material-symbols-outlined mr-2">share</span>Share Link';
         btnShare.disabled = false;
         
+        const shareStatus = document.getElementById('share-status');
+
         btnShare.onclick = async () => {
             try {
                 btnShare.disabled = true;
@@ -586,6 +612,11 @@ function finishConversion(jobId, format) {
                 
                 btnShare.innerHTML = '<span class="material-symbols-outlined mr-2">check</span>Copied!';
                 btnShare.classList.add('bg-green-100', 'text-green-700', 'border-green-200');
+
+                if (shareStatus) {
+                    shareStatus.textContent = `Link expires at ${new Date(data.expiresAt).toLocaleTimeString()}`;
+                    shareStatus.hidden = false;
+                }
                 
                 setTimeout(() => {
                     btnShare.innerHTML = '<span class="material-symbols-outlined mr-2">share</span>Share Link';
@@ -608,14 +639,7 @@ function finishConversion(jobId, format) {
     audioPlayer.volume = 0.8;
     updateSliderTrack(volumeSlider, volumeTrack);
 
-    // Emit conversion complete event for HistoryManager
-    bus.emit('conversion:complete', {
-        filename: baseName,
-        format: format,
-        url: downloadUrl,
-        size: 'Pending', // Or actual size if you calculate it synchronously
-        expiry: Date.now() + (24 * 60 * 60 * 1000) // 24 hours
-    });
+    // (Event emitted inside the HEAD request handler above)
 
     showView('result');
 }
@@ -916,5 +940,6 @@ function resetUpload() {
     btnConvert.classList.remove('bg-primary', 'hover:bg-primary-hover', 'shadow-lg');
     // Stop and cleanup preview
     realtimePreview.teardown();
+    previewToggle.setInactive();
     bus.emit('app:reset');
 }

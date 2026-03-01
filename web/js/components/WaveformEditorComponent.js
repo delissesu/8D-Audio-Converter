@@ -22,7 +22,9 @@ export class WaveformEditorComponent {
   /** @type {number} */
   #trimEnd = 0;
   /** @type {string|null} */
-  #dragging = null; // "start" | "end" | null
+  #dragging = null; // "start" | "end" | "middle" | null
+  /** @type {number} */
+  #draggingOffset = 0;
   /** @type {boolean} */
   #visible = false;
   /** @type {AudioContext|null} */
@@ -141,6 +143,7 @@ export class WaveformEditorComponent {
           <canvas id="waveform-canvas"></canvas>
           <div class="waveform-editor__handle waveform-editor__handle--start" id="waveform-handle-start" tabindex="0" role="slider" aria-label="Trim start" aria-valuemin="0" aria-valuemax="${this.#duration}"></div>
           <div class="waveform-editor__handle waveform-editor__handle--end" id="waveform-handle-end" tabindex="0" role="slider" aria-label="Trim end" aria-valuemin="0" aria-valuemax="${this.#duration}"></div>
+          <div id="waveform-middle-region" style="position: absolute; top: 0; bottom: 0; cursor: grab; z-index: 5;"></div>
           <div class="waveform-editor__overlay waveform-editor__overlay--left" id="waveform-overlay-left"></div>
           <div class="waveform-editor__overlay waveform-editor__overlay--right" id="waveform-overlay-right"></div>
         </div>
@@ -212,14 +215,42 @@ export class WaveformEditorComponent {
     const wrap = this.#container.querySelector("#waveform-canvas-wrap");
     const resetBtn = this.#container.querySelector("#waveform-reset");
 
+    const middleRegion = this.#container.querySelector("#waveform-middle-region");
+
     // Mouse/Touch drag
     const startDrag = (handleId) => (e) => {
       e.preventDefault();
       this.#dragging = handleId;
 
+      const rect = wrap.getBoundingClientRect();
+      const initialClientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const initialPct = Math.min(1, Math.max(0, (initialClientX - rect.left) / rect.width));
+      this.#draggingOffset = initialPct * this.#duration - this.#trimStart;
+
       const onMove = (moveEvent) => {
         const clientX = moveEvent.touches ? moveEvent.touches[0].clientX : moveEvent.clientX;
-        this.#handleDragMove(clientX, wrap);
+        if (this.#dragging === "middle") {
+          const pct = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+          const time = pct * this.#duration;
+          const newStart = time - this.#draggingOffset;
+          const dur = this.#trimEnd - this.#trimStart;
+          
+          if (newStart >= 0 && newStart + dur <= this.#duration) {
+            this.#trimStart = newStart;
+            this.#trimEnd = newStart + dur;
+            this.#onTrimChanged();
+          } else if (newStart < 0) {
+            this.#trimStart = 0;
+            this.#trimEnd = dur;
+            this.#onTrimChanged();
+          } else if (newStart + dur > this.#duration) {
+            this.#trimStart = this.#duration - dur;
+            this.#trimEnd = this.#duration;
+            this.#onTrimChanged();
+          }
+        } else {
+            this.#handleDragMove(clientX, wrap);
+        }
       };
 
       const onUp = () => {
@@ -240,6 +271,8 @@ export class WaveformEditorComponent {
     handleStart?.addEventListener("touchstart", startDrag("start"), { passive: false });
     handleEnd?.addEventListener("mousedown", startDrag("end"));
     handleEnd?.addEventListener("touchstart", startDrag("end"), { passive: false });
+    middleRegion?.addEventListener("mousedown", startDrag("middle"));
+    middleRegion?.addEventListener("touchstart", startDrag("middle"), { passive: false });
 
     // Keyboard: arrow keys
     handleStart?.addEventListener("keydown", (e) => {
@@ -305,11 +338,16 @@ export class WaveformEditorComponent {
     const handleEnd = this.#container?.querySelector("#waveform-handle-end");
     const overlayLeft = this.#container?.querySelector("#waveform-overlay-left");
     const overlayRight = this.#container?.querySelector("#waveform-overlay-right");
+    const middleRegion = this.#container?.querySelector("#waveform-middle-region");
 
     if (handleStart) handleStart.style.left = `${startPct}%`;
     if (handleEnd) handleEnd.style.left = `${endPct}%`;
     if (overlayLeft) overlayLeft.style.width = `${startPct}%`;
     if (overlayRight) overlayRight.style.width = `${100 - endPct}%`;
+    if (middleRegion) {
+      middleRegion.style.left = `${startPct}%`;
+      middleRegion.style.width = `${endPct - startPct}%`;
+    }
   }
 
   #updateTimeLabels() {
