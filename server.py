@@ -28,9 +28,9 @@ app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024
 
 # P1: Restrict CORS to own origin
 CORS(app, resources={
-    r"/convert":    {"origins": ["http://localhost:5000"]},
-    r"/status/*":   {"origins": ["http://localhost:5000"]},
-    r"/download/*": {"origins": ["http://localhost:5000"]},
+    r"/convert":    {"origins": ["http://localhost:5000", "http://127.0.0.1:5000"]},
+    r"/status/*":   {"origins": ["http://localhost:5000", "http://127.0.0.1:5000"]},
+    r"/download/*": {"origins": ["http://localhost:5000", "http://127.0.0.1:5000"]},
 })
 
 # P1: Load secret key from env or generate random
@@ -370,8 +370,9 @@ def set_security_headers(response):
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
-        "script-src 'self'; "
-        "style-src 'self' 'unsafe-inline'; "
+        "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
         "img-src 'self' data:; "
         "media-src 'self' blob:; "
         "connect-src 'self'; "

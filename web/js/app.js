@@ -1,6 +1,6 @@
 import { AudioConverter } from "./services/AudioConverter.js";
 
-const converter = new AudioConverter("http://localhost:5000");
+const converter = new AudioConverter("");
 
 // ── Security helpers ────────────────────────────────────────────
 function escapeHTML(str) {
