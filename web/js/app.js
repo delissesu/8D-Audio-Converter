@@ -4,10 +4,18 @@ import { PresetManager } from "./services/PresetManager.js";
 import { RealtimePreview } from "./services/RealtimePreview.js";
 import { PreviewToggleComponent } from "./components/PreviewToggleComponent.js";
 import { HistoryPanelComponent } from "./components/HistoryPanelComponent.js";
+import { FileQueueComponent } from "./components/FileQueueComponent.js";
+import { WaveformEditorComponent } from "./components/WaveformEditorComponent.js";
+import { BrowserDSP } from "./services/BrowserDSP.js";
 import { EventBus } from "./core/EventBus.js";
 
 const converter = new AudioConverter("");
 const bus = EventBus.getInstance();
+const browserDSP = new BrowserDSP();
+
+// Global trim state
+let currentTrimStart = 0;
+let currentTrimEnd = 0;
 
 // ── Security helpers ────────────────────────────────────────────
 function escapeHTML(str) {
@@ -92,6 +100,7 @@ const iconPause = document.getElementById('icon-pause');
 const volumeSlider = document.getElementById('volume-slider');
 const volumeTrack = document.getElementById('volume-track');
 const btnDownload = document.getElementById('btn-download');
+const btnShare = document.getElementById('btn-share');
 const btnRestart = document.getElementById('btn-restart');
 const resultSettings = document.getElementById('result-settings');
 const waveformBars = document.querySelectorAll('#waveform-container .waveform-bar');
@@ -138,11 +147,20 @@ function showView(viewName) {
 
 dropZone.addEventListener('drop', e => {
     const files = e.dataTransfer.files;
-    if (files.length) handleFile(files[0]);
+    if (files.length > 1) {
+        // Multi-file drop → batch queue
+        fileQueue.addFiles(files);
+    } else if (files.length === 1) {
+        handleFile(files[0]);
+    }
 });
 
 audioInput.addEventListener('change', () => {
-    if (audioInput.files.length) handleFile(audioInput.files[0]);
+    if (audioInput.files.length > 1) {
+        fileQueue.addFiles(audioInput.files);
+    } else if (audioInput.files.length === 1) {
+        handleFile(audioInput.files[0]);
+    }
 });
 
 function handleFile(file) {
@@ -271,6 +289,26 @@ if (historySlot) {
   historyPanel.mount(historySlot);
 }
 
+// Mount File Queue (Batch)
+const fileQueue = new FileQueueComponent();
+const fileQueueSlot = document.getElementById('file-queue-slot');
+if (fileQueueSlot) {
+  fileQueue.mount(fileQueueSlot);
+}
+
+// Mount Waveform Editor (Trim)
+const waveformEditor = new WaveformEditorComponent();
+const waveformSlot = document.getElementById('waveform-editor-slot');
+if (waveformSlot) {
+  waveformEditor.mount(waveformSlot);
+}
+
+// Listen for trim changes
+bus.on('trim:changed', ({ start, end }) => {
+  currentTrimStart = start;
+  currentTrimEnd = end;
+});
+
 // Listen for preset:loaded → update sliders
 bus.on('preset:loaded', (params) => {
   applyPresetToSliders(params);
@@ -344,14 +382,36 @@ btnConvert.addEventListener('click', async () => {
         room: reverbSlider.value / 100,
         depth: depthSlider.value / 100,
         wet: crossfeedSlider.value / 100,
-        damping: dampingSlider.value / 100
+        damping: dampingSlider.value / 100,
+        trim_start: currentTrimStart,
+        trim_end: currentTrimEnd,
     };
 
     try {
         showView('processing');
-        startProgressAnim("Uploading audio...");
-        currentJobId = await converter.startConversion(selectedFile, selectedFormat, params);
-        pollStatus(currentJobId, selectedFormat);
+
+        // Size-based routing: files < 10MB → in-browser DSP
+        if (browserDSP.shouldProcessLocally(selectedFile) && selectedFormat === 'wav') {
+            startProgressAnim("Processing in browser...");
+            const dspParams = {
+                pan_speed: panSpeedHz,
+                pan_depth: params.depth,
+                room_size: params.room,
+                wet_level: params.wet,
+                damping: params.damping,
+            };
+            const wavBlob = await browserDSP.process(selectedFile, dspParams, (pct) => {
+                updateProgressBar(pct);
+            });
+            // Create a download URL from the blob
+            const url = URL.createObjectURL(wavBlob);
+            const baseName = selectedFile.name.replace(/\.[^.]+$/, '');
+            finishConversionLocal(url, baseName + '_8d.wav', selectedFile, selectedFormat);
+        } else {
+            startProgressAnim("Uploading audio...");
+            currentJobId = await converter.startConversion(selectedFile, selectedFormat, params);
+            pollStatus(currentJobId, selectedFormat);
+        }
     } catch (err) {
         showError(err.message, "ERR_UPLOAD");
     } finally {
@@ -373,6 +433,13 @@ function startProgressAnim(text) {
     statusDetail.textContent = text;
     statusDetail.style.opacity = '1';
     progressCircle.style.strokeDashoffset = circumference;
+}
+
+function updateProgressBar(pct) {
+    const offset = circumference - (pct / 100) * circumference;
+    if (progressCircle.style.strokeDashoffset !== `${offset}px`) {
+        progressCircle.style.strokeDashoffset = offset;
+    }
 }
 
 function stopPolling() {
@@ -499,22 +566,112 @@ function finishConversion(jobId, format) {
         const a = document.createElement('a');
         a.href = downloadUrl;
         a.download = finalFilename;
+        document.body.appendChild(a);
         a.click();
+        document.body.removeChild(a);
     };
+
+    if (btnShare) {
+        // Reset share button
+        btnShare.innerHTML = '<span class="material-symbols-outlined mr-2">share</span>Share Link';
+        btnShare.disabled = false;
+        
+        btnShare.onclick = async () => {
+            try {
+                btnShare.disabled = true;
+                btnShare.innerHTML = '<span class="material-symbols-outlined mr-2 animate-spin">refresh</span>Generating...';
+                
+                const data = await converter.createShareLink(jobId);
+                await navigator.clipboard.writeText(data.shareUrl);
+                
+                btnShare.innerHTML = '<span class="material-symbols-outlined mr-2">check</span>Copied!';
+                btnShare.classList.add('bg-green-100', 'text-green-700', 'border-green-200');
+                
+                setTimeout(() => {
+                    btnShare.innerHTML = '<span class="material-symbols-outlined mr-2">share</span>Share Link';
+                    btnShare.classList.remove('bg-green-100', 'text-green-700', 'border-green-200');
+                    btnShare.disabled = false;
+                }, 3000);
+            } catch (err) {
+                console.error("Share failed", err);
+                btnShare.innerHTML = '<span class="material-symbols-outlined mr-2">error</span>Failed';
+                setTimeout(() => {
+                    btnShare.innerHTML = '<span class="material-symbols-outlined mr-2">share</span>Share Link';
+                    btnShare.disabled = false;
+                }, 2000);
+            }
+        };
+    }
 
     setPlayingState(false);
     volumeSlider.value = 0.8;
     audioPlayer.volume = 0.8;
     updateSliderTrack(volumeSlider, volumeTrack);
 
-    // Emit conversion:complete for history panel
+    // Emit conversion complete event for HistoryManager
     bus.emit('conversion:complete', {
-      jobId: jobId,
-      filename: finalFilename,
-      format: format,
-      sizeMb: selectedFile ? (selectedFile.size / (1024 * 1024)).toFixed(1) : '?',
-      elapsed: null,
-      downloadUrl: downloadUrl,
+        filename: baseName,
+        format: format,
+        url: downloadUrl,
+        size: 'Pending', // Or actual size if you calculate it synchronously
+        expiry: Date.now() + (24 * 60 * 60 * 1000) // 24 hours
+    });
+
+    showView('result');
+}
+
+function finishConversionLocal(url, finalFilename, file, format) {
+    resultFilename.textContent = finalFilename;
+    const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+    resultSize.textContent = `${sizeMb} MB (Local)`;
+
+    resultSettings.innerHTML = `
+        <span>SPEED: ${parseFloat(speedSlider.value).toFixed(1)}s</span><span class="text-border-color">|</span>
+        <span>DEPTH: ${depthSlider.value}%</span><span class="text-border-color">|</span>
+        <span>REVERB: ${reverbSlider.value}%</span><span class="text-border-color">|</span>
+        <span>X-FEED: ${crossfeedSlider.value}%</span><span class="text-border-color">|</span>
+        <span>DAMPING: ${dampingSlider.value}%</span>
+    `;
+
+    if (audioPlayer) {
+        audioPlayer.pause();
+        audioPlayer.removeAttribute('src');
+        audioPlayer.load();
+        audioPlayer = null;
+    }
+    if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+    }
+
+    decodeAndCacheAudio(url).then(() => updatePlayheadBar(0));
+
+    audioPlayer = new Audio(url);
+    audioPlayer.addEventListener('loadedmetadata', () => updateTimeDisplay(0, audioPlayer.duration));
+    audioPlayer.addEventListener('timeupdate', () => updateTimeDisplay(audioPlayer.currentTime, audioPlayer.duration));
+    audioPlayer.addEventListener('ended', () => setPlayingState(false));
+
+    btnDownload.onclick = () => {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = finalFilename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    };
+
+    if (btnShare) {
+        btnShare.disabled = true;
+        btnShare.title = "Share link is only available for cloud conversions";
+        btnShare.innerHTML = '<span class="material-symbols-outlined mr-2">cloud_off</span>Local Output';
+    }
+
+    bus.emit('conversion:complete', {
+        filename: finalFilename.replace(/\.[^/.]+$/, ""),
+        format: format,
+        url: url,
+        size: `${sizeMb} MB`,
+        expiry: Date.now() + (24 * 60 * 60 * 1000)
     });
 
     showView('result');

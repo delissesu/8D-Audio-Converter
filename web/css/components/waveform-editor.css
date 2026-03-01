@@ -1,0 +1,159 @@
+/* web/css/components/waveform-editor.css
+   Styles for the waveform trim editor. */
+
+/* ── Container ────────────────────────────────────────────────── */
+.waveform-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-radius: 16px;
+  background: #FFFFFF;
+  border: 1px solid #E5E5EA;
+  padding: 16px;
+  box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.04);
+}
+
+/* ── Header ───────────────────────────────────────────────────── */
+.waveform-editor__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.waveform-editor__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #1D1D1F;
+}
+
+.waveform-editor__reset {
+  border: 1px solid #E5E5EA;
+  border-radius: 6px;
+  padding: 4px 10px;
+  background: #FFFFFF;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: #86868B;
+  transition: all 100ms ease;
+}
+
+.waveform-editor__reset:hover {
+  border-color: #0071E3;
+  color: #0071E3;
+}
+
+/* ── Canvas wrapper ───────────────────────────────────────────── */
+.waveform-editor__canvas-wrap {
+  position: relative;
+  width: 100%;
+  height: 80px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #F5F5F7;
+}
+
+.waveform-editor__canvas-wrap canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* ── Trim handles ─────────────────────────────────────────────── */
+.waveform-editor__handle {
+  position: absolute;
+  top: 0;
+  width: 12px;
+  height: 100%;
+  cursor: ew-resize;
+  z-index: 10;
+  transform: translateX(-50%);
+}
+
+.waveform-editor__handle::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 3px;
+  height: 100%;
+  background: #0071E3;
+  border-radius: 1.5px;
+  transition: background 100ms ease;
+}
+
+.waveform-editor__handle::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 10px;
+  height: 20px;
+  background: #0071E3;
+  border-radius: 4px;
+  transition: background 100ms ease, transform 100ms ease;
+}
+
+.waveform-editor__handle:hover::after,
+.waveform-editor__handle:focus::after {
+  transform: translate(-50%, -50%) scale(1.2);
+  background: #005BB5;
+}
+
+.waveform-editor__handle:focus {
+  outline: none;
+}
+
+.waveform-editor__handle:focus::before {
+  background: #005BB5;
+  box-shadow: 0 0 0 2px rgba(0, 113, 227, 0.3);
+}
+
+/* ── Gray overlays (trimmed-out regions) ──────────────────────── */
+.waveform-editor__overlay {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.15);
+  pointer-events: none;
+  z-index: 5;
+}
+
+.waveform-editor__overlay--left {
+  left: 0;
+}
+
+.waveform-editor__overlay--right {
+  right: 0;
+}
+
+/* ── Time labels ──────────────────────────────────────────────── */
+.waveform-editor__times {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.waveform-editor__time {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.6875rem;
+  color: #86868B;
+}
+
+.waveform-editor__duration {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #0071E3;
+  background: rgba(0, 113, 227, 0.08);
+  padding: 2px 8px;
+  border-radius: 4px;
+}

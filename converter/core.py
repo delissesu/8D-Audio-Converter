@@ -26,6 +26,8 @@ def convert_to_8d(
     damping     : float = 0.5,
     progress_callback: Optional[Callable[[int, int, str], None]] = None,
     effect_chain: Optional[List] = None,
+    trim_start  : float = 0.0,
+    trim_end    : float = 0.0,
 ) -> None:
     """
     Full pipeline: load audio → apply effects → normalize → save.
@@ -116,6 +118,14 @@ def convert_to_8d(
     # Ensure shape is (num_frames, 2)
     if samples.ndim == 1:
         samples = np.column_stack([samples, samples])
+
+    # Apply trim if specified
+    if trim_start > 0 or trim_end > 0:
+        total_dur = len(samples) / sr
+        start_frame = max(0, int(trim_start * sr)) if trim_start > 0 else 0
+        end_frame = min(len(samples), int(trim_end * sr)) if trim_end > 0 and trim_end < total_dur else len(samples)
+        if start_frame < end_frame:
+            samples = samples[start_frame:end_frame]
 
     # Apply effects
     if use_chain:

@@ -1,9 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>8D Studio</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#0F172A">
+    <title>8D Audio Studio</title>
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="manifest.json">
     
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com" rel="preconnect" />
@@ -195,6 +199,8 @@
     <link rel="stylesheet" href="css/components/preset-picker.css" />
     <link rel="stylesheet" href="css/components/preview-toggle.css" />
     <link rel="stylesheet" href="css/components/history-panel.css" />
+    <link rel="stylesheet" href="css/components/file-queue.css" />
+    <link rel="stylesheet" href="css/components/waveform-editor.css" />
 </head>
 <body class="bg-background-light dark:bg-background-dark min-h-screen text-primary dark:text-slate-100 font-display antialiased flex flex-col items-center overflow-x-hidden transition-colors duration-300">
 
@@ -228,8 +234,14 @@
             </div>
         </div>
 
+        <!-- Waveform Editor (Trim) -->
+        <div id="waveform-editor-slot" class="w-full"></div>
+
         <!-- Preview Toggle -->
         <div id="preview-toggle-slot"></div>
+
+        <!-- Batch File Queue -->
+        <div id="file-queue-slot" class="w-full"></div>
 
         <!-- Parameter Card -->
         <div class="bg-white rounded-2xl p-8 shadow-soft w-full flex flex-col gap-8 border border-white/50">

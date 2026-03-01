@@ -57,6 +57,14 @@ CORS(app, resources={
 # P1: Load secret key from env or generate random
 app.config["SECRET_KEY"] = os.environ.get("FLASK_SECRET_KEY") or os.urandom(32)
 
+# ── API Blueprint Registration ─────────────────────────────────────────
+from adapters.web.api_v1_blueprint import api_v1
+app.register_blueprint(api_v1)
+
+import adapters.web.openapi_spec as openapi_spec
+@app.route("/api/v1/openapi.json")
+def get_openapi_spec():
+    return jsonify(openapi_spec.OPENAPI_SPEC)
 
 # ════════════════════════════════════════════════════════════════════
 # Security helpers
@@ -157,6 +165,8 @@ def _run_conversion(job_id: str, input_path: str, output_path: str, params: dict
             damping     = params.get("damping", DEFAULT_PARAMS["damping"]),
             progress_callback = cb.on_step,
             effect_chain = effect_chain,
+            trim_start  = params.get("trim_start", 0.0),
+            trim_end    = params.get("trim_end",   0.0),
         )
         _jobs[job_id]["status"]      = "done"
         _jobs[job_id]["progress"]    = 100
@@ -225,11 +235,13 @@ def start_conversion():
 
     # P0: Safe float parsing with clamping
     params: dict = {
-        "speed":   _safe_float(request.form.get("speed"),   DEFAULT_PARAMS["speed"],   0.01, 2.0),
-        "depth":   _safe_float(request.form.get("depth"),   DEFAULT_PARAMS["depth"],   0.0,  1.0),
-        "room":    _safe_float(request.form.get("room"),    DEFAULT_PARAMS["room"],    0.0,  1.0),
-        "wet":     _safe_float(request.form.get("wet"),     DEFAULT_PARAMS["wet"],     0.0,  1.0),
-        "damping": _safe_float(request.form.get("damping"), DEFAULT_PARAMS["damping"], 0.0,  1.0),
+        "speed":      _safe_float(request.form.get("speed"),      DEFAULT_PARAMS["speed"],   0.01, 2.0),
+        "depth":      _safe_float(request.form.get("depth"),      DEFAULT_PARAMS["depth"],   0.0,  1.0),
+        "room":       _safe_float(request.form.get("room"),       DEFAULT_PARAMS["room"],    0.0,  1.0),
+        "wet":        _safe_float(request.form.get("wet"),        DEFAULT_PARAMS["wet"],     0.0,  1.0),
+        "damping":    _safe_float(request.form.get("damping"),    DEFAULT_PARAMS["damping"], 0.0,  1.0),
+        "trim_start": _safe_float(request.form.get("trim_start"), 0.0, 0.0, 3600.0),
+        "trim_end":   _safe_float(request.form.get("trim_end"),   0.0, 0.0, 3600.0),
     }
 
     # Build effect chain from optional effects[] form field
@@ -370,6 +382,358 @@ def download_file(job_id: str):
         download_name=download_name,
     )
 
+
+# ════════════════════════════════════════════════════════════════════
+# Batch Conversion
+# ════════════════════════════════════════════════════════════════════
+
+_batches: dict = {}   # batchId → { job_ids, format, filenames, status }
+
+
+def _run_batch_sequential(batch_id: str) -> None:
+    """Run all jobs in a batch sequentially (not parallel) to avoid OOM."""
+    batch = _batches.get(batch_id)
+    if not batch:
+        return
+
+    batch["status"] = "processing"
+
+    for job_id in batch["job_ids"]:
+        job = _jobs.get(job_id)
+        if not job:
+            continue
+
+        # Run conversion synchronously in this thread
+        input_path = job.get("input_path")
+        output_path = job.get("output_path")
+        params = job.get("params", {})
+        effect_chain = job.get("effect_chain")
+
+        class _BatchJobProgressCallback:
+            def __init__(self, jid: str) -> None:
+                self.job_id = jid
+            def on_step(self, step_idx: int, total_steps: int, step_name: str) -> None:
+                progress = int((step_idx / total_steps) * 100)
+                _jobs[self.job_id]["progress"] = progress
+                _jobs[self.job_id]["step"] = step_name
+
+        cb = _BatchJobProgressCallback(job_id)
+        try:
+            _jobs[job_id]["status"] = "processing"
+            convert_to_8d(
+                input_path=input_path,
+                output_path=output_path,
+                pan_speed=params.get("speed", DEFAULT_PARAMS["speed"]),
+                pan_depth=params.get("depth", DEFAULT_PARAMS["depth"]),
+                room_size=params.get("room", DEFAULT_PARAMS["room"]),
+                wet_level=params.get("wet", DEFAULT_PARAMS["wet"]),
+                damping=params.get("damping", DEFAULT_PARAMS["damping"]),
+                progress_callback=cb.on_step,
+                effect_chain=effect_chain,
+            )
+            _jobs[job_id]["status"] = "done"
+            _jobs[job_id]["progress"] = 100
+            logger.info("batch=%s job=%s completed", batch_id[:8], job_id[:8])
+        except Exception as e:
+            _jobs[job_id]["status"] = "error"
+            _jobs[job_id]["error"] = str(e)
+            logger.error("batch=%s job=%s failed: %s", batch_id[:8], job_id[:8], e)
+            # Clean up output on error
+            if os.path.exists(output_path):
+                try:
+                    os.unlink(output_path)
+                except OSError:
+                    pass
+        finally:
+            # Always clean up input temp file
+            if input_path and os.path.exists(input_path):
+                try:
+                    os.unlink(input_path)
+                except OSError:
+                    pass
+
+    batch["status"] = "done"
+
+
+@app.route("/batch-convert", methods=["POST"])
+def start_batch_conversion():
+    """
+    POST /batch-convert
+    Form fields:
+      - files[]   : multiple audio files (multipart)
+      - format    : output format extension
+      - speed, depth, room, wet, damping : floats
+      - effects[] : optional effect IDs
+    Returns: { batchId, jobIds: string[] }
+    """
+    files = request.files.getlist("files[]")
+    if not files:
+        files = request.files.getlist("files")
+    if not files:
+        return jsonify({"error": "No files uploaded."}), 400
+
+    if len(files) > 20:
+        return jsonify({"error": "Maximum 20 files per batch."}), 400
+
+    # Parse output format
+    out_format = request.form.get("format", "mp3").lower().strip().lstrip(".")
+    if out_format not in ALLOWED_OUTPUT_FORMATS:
+        return jsonify({"error": f"Format '{out_format}' is not allowed."}), 400
+
+    # Parse params
+    params: dict = {
+        "speed":   _safe_float(request.form.get("speed"),   DEFAULT_PARAMS["speed"],   0.01, 2.0),
+        "depth":   _safe_float(request.form.get("depth"),   DEFAULT_PARAMS["depth"],   0.0,  1.0),
+        "room":    _safe_float(request.form.get("room"),    DEFAULT_PARAMS["room"],    0.0,  1.0),
+        "wet":     _safe_float(request.form.get("wet"),     DEFAULT_PARAMS["wet"],     0.0,  1.0),
+        "damping": _safe_float(request.form.get("damping"), DEFAULT_PARAMS["damping"], 0.0,  1.0),
+    }
+
+    # Build effect chain
+    effect_ids = request.form.getlist("effects[]")
+    if not effect_ids:
+        effect_ids = request.form.getlist("effects")
+
+    effect_chain = None
+    if effect_ids:
+        chain = []
+        for eid in effect_ids:
+            if eid in EFFECT_REGISTRY:
+                chain.append(EFFECT_REGISTRY[eid])
+            else:
+                return jsonify({"error": f"Unknown effect: '{eid}'."}), 400
+        effect_chain = chain
+    else:
+        effect_chain = [EFFECT_REGISTRY[eid] for eid in DEFAULT_EFFECT_IDS]
+
+    batch_id: str = str(uuid.uuid4())
+    job_ids: list[str] = []
+    filenames: list[str] = []
+
+    for audio_file in files:
+        # Validate magic bytes
+        header = audio_file.read(16)
+        audio_file.seek(0)
+
+        if not _validate_magic_bytes(header):
+            logger.warning(
+                "batch upload rejected ip=%s file=%s reason=invalid_magic_bytes",
+                request.remote_addr, audio_file.filename,
+            )
+            continue  # Skip invalid files, don't abort entire batch
+
+        safe_name = _sanitize_filename(audio_file.filename or "upload.mp3")
+        suffix = Path(safe_name).suffix or ".mp3"
+
+        # Save input to temp
+        tmp_fd_in, tmp_in = tempfile.mkstemp(suffix=suffix)
+        os.close(tmp_fd_in)
+        try:
+            audio_file.save(tmp_in)
+        except Exception:
+            if os.path.exists(tmp_in):
+                os.unlink(tmp_in)
+            continue
+
+        # Size check
+        actual_size = os.path.getsize(tmp_in)
+        if actual_size > MAX_UPLOAD_BYTES or actual_size == 0:
+            os.unlink(tmp_in)
+            continue
+
+        # Create output temp file
+        tmp_fd_out, tmp_out = tempfile.mkstemp(suffix=f".{out_format}")
+        os.close(tmp_fd_out)
+
+        job_id = str(uuid.uuid4())
+        _jobs[job_id] = {
+            "status": "queued",
+            "progress": 0,
+            "step": "Waiting to start",
+            "output_path": tmp_out,
+            "input_path": tmp_in,
+            "params": params,
+            "effect_chain": effect_chain,
+            "error": None,
+        }
+
+        job_ids.append(job_id)
+        filenames.append(Path(safe_name).stem)
+
+    if not job_ids:
+        return jsonify({"error": "No valid audio files in batch."}), 400
+
+    _batches[batch_id] = {
+        "job_ids": job_ids,
+        "format": out_format,
+        "filenames": filenames,
+        "status": "processing",
+    }
+
+    logger.info(
+        "batch accepted ip=%s batch=%s files=%d format=%s",
+        request.remote_addr, batch_id[:8], len(job_ids), out_format,
+    )
+
+    # Run batch in a background thread (sequential within)
+    thread = threading.Thread(
+        target=_run_batch_sequential,
+        args=(batch_id,),
+        daemon=True,
+    )
+    thread.start()
+
+    return jsonify({"batchId": batch_id, "jobIds": job_ids}), 202
+
+
+@app.route("/batch-status/<batch_id>", methods=["GET"])
+def get_batch_status(batch_id: str):
+    """
+    GET /batch-status/<batchId>
+    Returns: { total, done, failed, status, jobs: [{jobId, status, progress, step, error}] }
+    """
+    if not _is_valid_job_id(batch_id):
+        return jsonify({"error": "Invalid batch ID."}), 400
+
+    batch = _batches.get(batch_id)
+    if not batch:
+        return jsonify({"error": "Batch not found."}), 404
+
+    jobs_info = []
+    done_count = 0
+    failed_count = 0
+
+    for i, job_id in enumerate(batch["job_ids"]):
+        job = _jobs.get(job_id, {})
+        job_status = job.get("status", "unknown")
+
+        if job_status == "done":
+            done_count += 1
+        elif job_status == "error":
+            failed_count += 1
+
+        jobs_info.append({
+            "jobId": job_id,
+            "filename": batch["filenames"][i] if i < len(batch["filenames"]) else "",
+            "status": job_status,
+            "progress": job.get("progress", 0),
+            "step": job.get("step", ""),
+            "error": job.get("error"),
+        })
+
+    return jsonify({
+        "batchId": batch_id,
+        "total": len(batch["job_ids"]),
+        "done": done_count,
+        "failed": failed_count,
+        "status": batch["status"],
+        "jobs": jobs_info,
+    })
+
+
+@app.route("/batch-download/<batch_id>", methods=["GET"])
+def download_batch(batch_id: str):
+    """
+    GET /batch-download/<batchId>
+    Returns: ZIP file with all completed conversions, or 202 if still processing.
+    """
+    if not _is_valid_job_id(batch_id):
+        return jsonify({"error": "Invalid batch ID."}), 400
+
+    batch = _batches.get(batch_id)
+    if not batch:
+        return jsonify({"error": "Batch not found."}), 404
+
+    # Check if at least some jobs are done
+    results = []
+    all_done = True
+    any_done = False
+
+    for i, job_id in enumerate(batch["job_ids"]):
+        job = _jobs.get(job_id, {})
+        status = job.get("status", "unknown")
+
+        if status not in ("done", "error"):
+            all_done = False
+
+        if status == "done":
+            any_done = True
+
+        results.append({
+            "filename": batch["filenames"][i] if i < len(batch["filenames"]) else f"track_{i+1}",
+            "output_path": job.get("output_path", ""),
+            "status": status,
+        })
+
+    if not any_done:
+        return jsonify({"error": "No completed files yet."}), 202
+
+    # Build ZIP
+    from infrastructure.web.zip_builder import build_batch_zip
+    zip_buffer = build_batch_zip(results, batch["format"])
+
+    return send_file(
+        zip_buffer,
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name=f"8d_audio_batch.zip",
+    )
+
+
+# ════════════════════════════════════════════════════════════════════
+# Share Links
+# ════════════════════════════════════════════════════════════════════
+import secrets
+import time
+from datetime import datetime, timezone
+
+from infrastructure.link.memory_link_store import MemoryLinkStore
+from flask import redirect, url_for
+
+_link_store = MemoryLinkStore()
+SHARE_LINK_TTL_SECONDS = int(os.environ.get("SHARE_LINK_TTL_SECONDS", 24 * 60 * 60))
+
+@app.route("/api/share/<job_id>", methods=["POST"])
+def create_share_link(job_id: str):
+    """
+    POST /api/share/<job_id>
+    Creates a temporary public link for a completed job.
+    """
+    if not _is_valid_job_id(job_id):
+        return jsonify({"error": "Invalid job ID."}), 400
+
+    job = _jobs.get(job_id)
+    if not job or job.get("status") != "done":
+        return jsonify({"error": "Job not found or not completed."}), 404
+
+    token = secrets.token_urlsafe(16)
+    expires_at = time.time() + SHARE_LINK_TTL_SECONDS
+    
+    _link_store.create_link(token, job_id, expires_at)
+    
+    share_url = request.host_url.rstrip("/") + "/s/" + token
+    expires_iso = datetime.fromtimestamp(expires_at, tz=timezone.utc).isoformat()
+    
+    return jsonify({
+        "shareUrl": share_url,
+        "expiresAt": expires_iso
+    }), 201
+
+@app.route("/s/<token>", methods=["GET"])
+def handle_share_link(token: str):
+    """
+    GET /s/<token>
+    Redirects to the actual download endpoint or returns 410 if expired.
+    """
+    job_id = _link_store.get_job_id(token)
+    if not job_id:
+        return jsonify({"error": "This link has expired."}), 410
+        
+    job = _jobs.get(job_id)
+    if not job or job.get("status") != "done":
+        return jsonify({"error": "File no longer available."}), 410
+        
+    return redirect(url_for("download_file", job_id=job_id))
 
 # ════════════════════════════════════════════════════════════════════
 # Error handlers & Security headers
