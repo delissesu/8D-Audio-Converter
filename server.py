@@ -11,7 +11,7 @@ from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 
 from converter.core import convert_to_8d
-from converter.utils import SUPPORTED_OUTPUT_FORMATS
+from converter.utils import SUPPORTED_OUTPUT_FORMATS, DEFAULT_PARAMS
 
 # ── Logging ──────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -117,17 +117,11 @@ def _run_conversion(job_id: str, input_path: str, output_path: str, params: dict
         """Adapter: feeds pipeline step updates into the job store."""
         def __init__(self, jid: str) -> None:
             self.job_id = jid
-            self.steps  = [
-                "Loading audio file",
-                "Applying auto-panning",
-                "Applying reverb",
-                "Normalizing audio",
-                "Exporting to target format",
-            ]
 
-        def on_step(self, step_index: int) -> None:
-            _jobs[self.job_id]["progress"] = int((step_index / len(self.steps)) * 100)
-            _jobs[self.job_id]["step"]     = self.steps[step_index]
+        def on_step(self, step_idx: int, total_steps: int, step_name: str) -> None:
+            progress = int((step_idx / total_steps) * 100)
+            _jobs[self.job_id]["progress"] = progress
+            _jobs[self.job_id]["step"]     = step_name
 
     cb = _JobProgressCallback(job_id)
     try:
@@ -135,12 +129,12 @@ def _run_conversion(job_id: str, input_path: str, output_path: str, params: dict
         convert_to_8d(
             input_path  = input_path,
             output_path = output_path,
-            pan_speed   = params.get("speed",   0.15),
-            pan_depth   = params.get("depth",   1.0),
-            room_size   = params.get("room",    0.4),
-            wet_level   = params.get("wet",     0.3),
-            damping     = params.get("damping", 0.5),
-            verbose     = False,
+            pan_speed   = params.get("speed",   DEFAULT_PARAMS["speed"]),
+            pan_depth   = params.get("depth",   DEFAULT_PARAMS["depth"]),
+            room_size   = params.get("room",    DEFAULT_PARAMS["room"]),
+            wet_level   = params.get("wet",     DEFAULT_PARAMS["wet"]),
+            damping     = params.get("damping", DEFAULT_PARAMS["damping"]),
+            progress_callback = cb.on_step,
         )
         _jobs[job_id]["status"]      = "done"
         _jobs[job_id]["progress"]    = 100
@@ -209,11 +203,11 @@ def start_conversion():
 
     # P0: Safe float parsing with clamping
     params: dict = {
-        "speed":   _safe_float(request.form.get("speed"),   0.15, 0.01, 2.0),
-        "depth":   _safe_float(request.form.get("depth"),   1.0,  0.0,  1.0),
-        "room":    _safe_float(request.form.get("room"),    0.4,  0.0,  1.0),
-        "wet":     _safe_float(request.form.get("wet"),     0.3,  0.0,  1.0),
-        "damping": _safe_float(request.form.get("damping"), 0.5,  0.0,  1.0),
+        "speed":   _safe_float(request.form.get("speed"),   DEFAULT_PARAMS["speed"],   0.01, 2.0),
+        "depth":   _safe_float(request.form.get("depth"),   DEFAULT_PARAMS["depth"],   0.0,  1.0),
+        "room":    _safe_float(request.form.get("room"),    DEFAULT_PARAMS["room"],    0.0,  1.0),
+        "wet":     _safe_float(request.form.get("wet"),     DEFAULT_PARAMS["wet"],     0.0,  1.0),
+        "damping": _safe_float(request.form.get("damping"), DEFAULT_PARAMS["damping"], 0.0,  1.0),
     }
 
     # P0: Sanitize filename — only use the extension from the safe name

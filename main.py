@@ -12,10 +12,14 @@ Usage:
 
 import argparse
 import sys
+import time
+import os
+
+from tqdm import tqdm
 
 from converter.core import convert_to_8d
 from converter.printer import OutputPrinter
-from converter.utils import get_output_path, SUPPORTED_OUTPUT_FORMATS
+from converter.utils import get_output_path, SUPPORTED_OUTPUT_FORMATS, DEFAULT_PARAMS
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -59,37 +63,37 @@ Parameter guide:
     fx_group.add_argument(
         "--speed", "-s",
         type=float,
-        default=0.15,
+        default=DEFAULT_PARAMS["speed"],
         metavar="SPEED",
-        help="Panning rotation speed in Hz (default: 0.15).",
+        help=f"Panning rotation speed in Hz (default: {DEFAULT_PARAMS['speed']}).",
     )
     fx_group.add_argument(
         "--depth", "-d",
         type=float,
-        default=1.0,
+        default=DEFAULT_PARAMS["depth"],
         metavar="DEPTH",
-        help="Panning depth/intensity (default: 1.0).",
+        help=f"Panning depth/intensity (default: {DEFAULT_PARAMS['depth']}).",
     )
     fx_group.add_argument(
         "--room", "-r",
         type=float,
-        default=0.4,
+        default=DEFAULT_PARAMS["room"],
         metavar="ROOM",
-        help="Reverb room size (default: 0.4).",
+        help=f"Reverb room size (default: {DEFAULT_PARAMS['room']}).",
     )
     fx_group.add_argument(
         "--wet", "-w",
         type=float,
-        default=0.3,
+        default=DEFAULT_PARAMS["wet"],
         metavar="LEVEL",
-        help="Reverb wet mix level (default: 0.3).",
+        help=f"Reverb wet mix level (default: {DEFAULT_PARAMS['wet']}).",
     )
     fx_group.add_argument(
         "--damping",
         type=float,
-        default=0.5,
+        default=DEFAULT_PARAMS["damping"],
         metavar="LEVEL",
-        help="Reverb high-frequency damping (default: 0.5).",
+        help=f"Reverb high-frequency damping (default: {DEFAULT_PARAMS['damping']}).",
     )
 
     # ── Output options ───────────────────────────────────────────
@@ -131,7 +135,6 @@ def main() -> None:
     )
 
     # ── Resolve output format and path ───────────────────────────
-    import os
     output_ext : str = ".wav"  # default
 
     if args.format is not None:
@@ -158,18 +161,56 @@ def main() -> None:
         return  # unreachable but satisfies type checkers
 
     # ── Run pipeline ─────────────────────────────────────────────
+    start_time = time.time()
     try:
-        convert_to_8d(
-            input_path=args.input,
-            output_path=output_path,
-            pan_speed=args.speed,
-            pan_depth=args.depth,
-            room_size=args.room,
-            wet_level=args.wet,
-            damping=args.damping,
-            verbose=not args.quiet,
-            printer=printer,
-        )
+        if args.quiet:
+            # Quiet mode: no progress bar
+            convert_to_8d(
+                input_path=args.input,
+                output_path=output_path,
+                pan_speed=args.speed,
+                pan_depth=args.depth,
+                room_size=args.room,
+                wet_level=args.wet,
+                damping=args.damping,
+            )
+        else:
+            # Verbose mode: inject tqdm progress bar
+            total_steps = 5
+            with tqdm(total=total_steps, desc="Processing", unit="step") as pbar:
+                def cli_callback(step_idx: int, total: int, name: str) -> None:
+                    pbar.set_description(name)
+                    if step_idx > 0:
+                        pbar.update(1)
+                    if step_idx == total - 1:
+                        pbar.update(1) # finish the bar
+
+                convert_to_8d(
+                    input_path=args.input,
+                    output_path=output_path,
+                    pan_speed=args.speed,
+                    pan_depth=args.depth,
+                    room_size=args.room,
+                    wet_level=args.wet,
+                    damping=args.damping,
+                    progress_callback=cli_callback,
+                )
+
+        # ── Print result ─────────────────────────────────────────────
+        size_mb : float = os.path.getsize(output_path) / (1024 * 1024)
+        out_ext : str   = os.path.splitext(output_path)[1].upper().lstrip(".")
+        elapsed : float = time.time() - start_time
+
+        if not args.quiet:
+            printer.success(
+                title=output_path,
+                details={
+                    "Format" : out_ext,
+                    "Size"   : f"{size_mb:.2f} MB",
+                    "Time"   : f"{elapsed:.1f}s",
+                },
+            )
+
     except (FileNotFoundError, ValueError) as exc:
         # HIG: Consistency — errors always to stderr via printer
         printer.error(str(exc))
