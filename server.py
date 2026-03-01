@@ -12,6 +12,7 @@ from flask_cors import CORS
 
 from converter.core import convert_to_8d
 from converter.utils import SUPPORTED_OUTPUT_FORMATS, DEFAULT_PARAMS
+from infrastructure.web.job_store import get_job, set_job, update_job, delete_job
 
 # Effect chain imports
 from infrastructure.audio.effects import (
@@ -134,9 +135,8 @@ MAX_UPLOAD_BYTES: int = 100 * 1024 * 1024  # 100 MB
 
 
 # ════════════════════════════════════════════════════════════════════
-# In-memory job store
+# Job store — backed by infrastructure.web.job_store (single source)
 # ════════════════════════════════════════════════════════════════════
-_jobs: dict = {}
 
 
 def _run_conversion(job_id: str, input_path: str, output_path: str, params: dict, effect_chain: list = None) -> None:
@@ -149,12 +149,11 @@ def _run_conversion(job_id: str, input_path: str, output_path: str, params: dict
 
         def on_step(self, step_idx: int, total_steps: int, step_name: str) -> None:
             progress = int((step_idx / total_steps) * 100)
-            _jobs[self.job_id]["progress"] = progress
-            _jobs[self.job_id]["step"]     = step_name
+            update_job(self.job_id, {"progress": progress, "step": step_name})
 
     cb = _JobProgressCallback(job_id)
     try:
-        _jobs[job_id]["status"] = "processing"
+        update_job(job_id, {"status": "processing"})
         convert_to_8d(
             input_path  = input_path,
             output_path = output_path,
@@ -168,24 +167,37 @@ def _run_conversion(job_id: str, input_path: str, output_path: str, params: dict
             trim_start  = params.get("trim_start", 0.0),
             trim_end    = params.get("trim_end",   0.0),
         )
-        _jobs[job_id]["status"]      = "done"
-        _jobs[job_id]["progress"]    = 100
-        _jobs[job_id]["output_path"] = output_path
+        update_job(job_id, {
+            "status": "done",
+            "progress": 100,
+            "output_path": os.path.realpath(output_path),
+        })
+        # Schedule output file cleanup after 30 minutes
+        _schedule_output_cleanup(output_path, delay_s=1800)
         logger.info("job=%s completed", job_id[:8])
     except Exception as e:
-        _jobs[job_id]["status"] = "error"
-        _jobs[job_id]["error"]  = str(e)
+        update_job(job_id, {"status": "error", "error": str(e)})
         logger.error("job=%s failed: %s", job_id[:8], e)
         # Clean up output file on error
-        if os.path.exists(output_path):
-            try:
-                os.unlink(output_path)
-            except OSError:
-                pass
+        _safe_delete(output_path)
     finally:
-        # Always clean up input temp file
-        if os.path.exists(input_path):
-            os.unlink(input_path)
+        # Always clean up input temp file — never needed again
+        _safe_delete(input_path)
+
+
+def _safe_delete(path: str) -> None:
+    """Delete a file without raising if it does not exist."""
+    try:
+        if path and os.path.exists(path):
+            os.unlink(path)
+    except OSError as e:
+        logger.warning("Could not delete %s: %s", path, e)
+
+
+def _schedule_output_cleanup(path: str, delay_s: int = 1800) -> None:
+    """Delete output file after *delay_s* seconds (default 30 min)."""
+    from threading import Timer
+    Timer(delay_s, _safe_delete, args=[path]).start()
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -295,13 +307,13 @@ def start_conversion():
     os.close(tmp_fd_out)
 
     job_id: str = str(uuid.uuid4())
-    _jobs[job_id] = {
+    set_job(job_id, {
         "status":      "queued",
         "progress":    0,
         "step":        "Waiting to start",
-        "output_path": tmp_out,
+        "output_path": os.path.realpath(tmp_out),
         "error":       None,
-    }
+    })
 
     thread = threading.Thread(
         target=_run_conversion,
@@ -323,7 +335,7 @@ def get_status(job_id: str):
     if not _is_valid_job_id(job_id):
         return jsonify({"error": "Invalid job ID."}), 400
 
-    job = _jobs.get(job_id)
+    job = get_job(job_id)
     if not job:
         return jsonify({"error": "Job not found."}), 404
     return jsonify({
@@ -344,7 +356,7 @@ def download_file(job_id: str):
     if not _is_valid_job_id(job_id):
         return jsonify({"error": "Invalid job ID."}), 400
 
-    job = _jobs.get(job_id)
+    job = get_job(job_id)
     if not job or job["status"] != "done":
         return jsonify({"error": "File not ready."}), 404
 
@@ -356,7 +368,7 @@ def download_file(job_id: str):
         return jsonify({"error": "Access denied."}), 403
 
     if not os.path.exists(output_path):
-        return jsonify({"error": "Output file missing."}), 404
+        return jsonify({"error": "File has expired. Please convert again."}), 410
 
     ext: str = Path(output_path).suffix.lstrip(".")
     mimetype: str = {
@@ -399,7 +411,7 @@ def _run_batch_sequential(batch_id: str) -> None:
     batch["status"] = "processing"
 
     for job_id in batch["job_ids"]:
-        job = _jobs.get(job_id)
+        job = get_job(job_id)
         if not job:
             continue
 
@@ -414,12 +426,11 @@ def _run_batch_sequential(batch_id: str) -> None:
                 self.job_id = jid
             def on_step(self, step_idx: int, total_steps: int, step_name: str) -> None:
                 progress = int((step_idx / total_steps) * 100)
-                _jobs[self.job_id]["progress"] = progress
-                _jobs[self.job_id]["step"] = step_name
+                update_job(self.job_id, {"progress": progress, "step": step_name})
 
         cb = _BatchJobProgressCallback(job_id)
         try:
-            _jobs[job_id]["status"] = "processing"
+            update_job(job_id, {"status": "processing"})
             convert_to_8d(
                 input_path=input_path,
                 output_path=output_path,
@@ -431,26 +442,16 @@ def _run_batch_sequential(batch_id: str) -> None:
                 progress_callback=cb.on_step,
                 effect_chain=effect_chain,
             )
-            _jobs[job_id]["status"] = "done"
-            _jobs[job_id]["progress"] = 100
+            update_job(job_id, {"status": "done", "progress": 100})
+            _schedule_output_cleanup(output_path, delay_s=1800)
             logger.info("batch=%s job=%s completed", batch_id[:8], job_id[:8])
         except Exception as e:
-            _jobs[job_id]["status"] = "error"
-            _jobs[job_id]["error"] = str(e)
+            update_job(job_id, {"status": "error", "error": str(e)})
             logger.error("batch=%s job=%s failed: %s", batch_id[:8], job_id[:8], e)
-            # Clean up output on error
-            if os.path.exists(output_path):
-                try:
-                    os.unlink(output_path)
-                except OSError:
-                    pass
+            _safe_delete(output_path)
         finally:
             # Always clean up input temp file
-            if input_path and os.path.exists(input_path):
-                try:
-                    os.unlink(input_path)
-                except OSError:
-                    pass
+            _safe_delete(input_path)
 
     batch["status"] = "done"
 
@@ -546,16 +547,16 @@ def start_batch_conversion():
         os.close(tmp_fd_out)
 
         job_id = str(uuid.uuid4())
-        _jobs[job_id] = {
+        set_job(job_id, {
             "status": "queued",
             "progress": 0,
             "step": "Waiting to start",
-            "output_path": tmp_out,
+            "output_path": os.path.realpath(tmp_out),
             "input_path": tmp_in,
             "params": params,
             "effect_chain": effect_chain,
             "error": None,
-        }
+        })
 
         job_ids.append(job_id)
         filenames.append(Path(safe_name).stem)
@@ -604,7 +605,7 @@ def get_batch_status(batch_id: str):
     failed_count = 0
 
     for i, job_id in enumerate(batch["job_ids"]):
-        job = _jobs.get(job_id, {})
+        job = get_job(job_id) or {}
         job_status = job.get("status", "unknown")
 
         if job_status == "done":
@@ -650,7 +651,7 @@ def download_batch(batch_id: str):
     any_done = False
 
     for i, job_id in enumerate(batch["job_ids"]):
-        job = _jobs.get(job_id, {})
+        job = get_job(job_id) or {}
         status = job.get("status", "unknown")
 
         if status not in ("done", "error"):
@@ -685,13 +686,12 @@ def download_batch(batch_id: str):
 # ════════════════════════════════════════════════════════════════════
 import secrets
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from infrastructure.link.memory_link_store import MemoryLinkStore
 from flask import redirect, url_for
 
 _link_store = MemoryLinkStore()
-SHARE_LINK_TTL_SECONDS = int(os.environ.get("SHARE_LINK_TTL_SECONDS", 24 * 60 * 60))
 
 @app.route("/api/share/<job_id>", methods=["POST"])
 def create_share_link(job_id: str):
@@ -699,25 +699,47 @@ def create_share_link(job_id: str):
     POST /api/share/<job_id>
     Creates a temporary public link for a completed job.
     """
+    # 1. Validate job_id format
     if not _is_valid_job_id(job_id):
-        return jsonify({"error": "Invalid job ID."}), 400
+        return jsonify({"error": "Invalid job ID format."}), 400
 
-    job = _jobs.get(job_id)
-    if not job or job.get("status") != "done":
-        return jsonify({"error": "Job not found or not completed."}), 404
+    # 2. Look up job in centralized store
+    job = get_job(job_id)
+    if job is None:
+        return jsonify({"error": "Job not found."}), 404
 
-    token = secrets.token_urlsafe(16)
-    expires_at = time.time() + SHARE_LINK_TTL_SECONDS
-    
-    _link_store.create_link(token, job_id, expires_at)
-    
+    # 3. Confirm job is done
+    if job.get("status") != "done":
+        return jsonify({
+            "error": f"Job is not ready. Current status: {job.get('status', 'unknown')}"
+        }), 404
+
+    # 4. Parse TTL safely
+    try:
+        ttl = int(os.environ.get("SHARE_LINK_TTL_SECONDS", "86400"))
+    except (ValueError, TypeError):
+        ttl = 86400
+
+    # 5. Create share token
+    try:
+        token = _link_store.create(job_id, ttl_seconds=ttl)
+    except Exception as e:
+        logger.error("share token creation failed: %s", e)
+        return jsonify({"error": f"Could not create share link: {str(e)}"}), 500
+
+    # 6. Build response
+    expires_at = (
+        datetime.utcnow() + timedelta(seconds=ttl)
+    ).isoformat() + "Z"
+
     share_url = request.host_url.rstrip("/") + "/s/" + token
-    expires_iso = datetime.fromtimestamp(expires_at, tz=timezone.utc).isoformat()
-    
+
     return jsonify({
         "shareUrl": share_url,
-        "expiresAt": expires_iso
+        "expiresAt": expires_at,
+        "token": token,
     }), 201
+
 
 @app.route("/s/<token>", methods=["GET"])
 def handle_share_link(token: str):
@@ -725,14 +747,14 @@ def handle_share_link(token: str):
     GET /s/<token>
     Redirects to the actual download endpoint or returns 410 if expired.
     """
-    job_id = _link_store.get_job_id(token)
+    job_id = _link_store.resolve(token)
     if not job_id:
-        return jsonify({"error": "This link has expired."}), 410
-        
-    job = _jobs.get(job_id)
+        return jsonify({"error": "This link has expired or does not exist."}), 410
+
+    job = get_job(job_id)
     if not job or job.get("status") != "done":
         return jsonify({"error": "File no longer available."}), 410
-        
+
     return redirect(url_for("download_file", job_id=job_id))
 
 # ════════════════════════════════════════════════════════════════════

@@ -65,13 +65,29 @@ export class WaveformEditorComponent {
 
   /**
    * Get current trim values in seconds.
+   * Returns { start: 0, end: 0 } when no trim is active (full file selected).
    * @returns {{ start: number, end: number }}
    */
   getTrimValues() {
-    return {
-      start: this.#trimStart,
-      end: this.#trimEnd,
-    };
+    // Guard: if no audio loaded, return zero trim (signals "no trim" to backend)
+    if (!this.#duration || this.#duration === 0) {
+      return { start: 0, end: 0 };
+    }
+
+    const start = this.#trimStart ?? 0;
+    const end   = this.#trimEnd > 0 ? this.#trimEnd : this.#duration;
+
+    // If selection covers the entire file (within 0.1s tolerance), signal "no trim"
+    const isFullFile = (
+      Math.abs(start) < 0.1 &&
+      Math.abs(end - this.#duration) < 0.1
+    );
+
+    if (isFullFile) {
+      return { start: 0, end: 0 };
+    }
+
+    return { start, end };
   }
 
   // ── Private ────────────────────────────────────────────────

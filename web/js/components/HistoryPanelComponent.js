@@ -96,22 +96,27 @@ export class HistoryPanelComponent {
 
       for (const entry of entries) {
         const expired = entry.expired === true;
-        const statusClass = expired ? "history-item--expired" : "";
+        const hasValidUrl = entry.downloadUrl && !entry.downloadUrl.includes("undefined") && !entry.downloadUrl.includes("null");
+        const statusClass = expired || !hasValidUrl ? "history-item--expired" : "";
 
         html += `
           <div class="history-item ${statusClass}">
             <div class="history-item__info">
-              <span class="history-item__name" title="${escapeHTML(entry.filename)}">${escapeHTML(entry.filename)}</span>
+              <span class="history-item__name" title="${escapeHTML(entry.filename ?? 'Unknown')}">${escapeHTML(entry.filename ?? 'Unknown')}</span>
               <span class="history-item__meta">
                 ${entry.format?.toUpperCase() || ""} • ${entry.sizeMb != null && !isNaN(entry.sizeMb) ? Number(entry.sizeMb).toFixed(1) + " MB" : "—"} • ${formatTimestamp(entry.timestamp)}
               </span>
             </div>
             <div class="history-item__actions">
-              ${expired
-                ? `<span class="history-item__expired-label" title="Links expire after 30 min">Expired</span>`
-                : `<a class="history-item__download" href="${escapeHTML(entry.downloadUrl)}" download="${escapeHTML(entry.filename)}" title="Download">
+              ${expired || !hasValidUrl
+                ? `<span class="history-item__expired-label" title="Link expired or unavailable">Expired</span>`
+                : `<button class="history-item__download btn-download-history"
+                     data-url="${escapeHTML(entry.downloadUrl)}"
+                     data-filename="${escapeHTML(entry.filename ?? 'download')}"
+                     data-format="${escapeHTML(entry.format ?? '')}"
+                     title="Download">
                     <span class="material-symbols-outlined" style="font-size:16px">download</span>
-                   </a>`
+                   </button>`
               }
             </div>
           </div>`;
@@ -151,27 +156,81 @@ export class HistoryPanelComponent {
       });
     }
 
-    // Check download links — mark expired on 404
-    const downloadLinks = this.#container?.querySelectorAll(".history-item__download") || [];
-    for (const link of downloadLinks) {
-      link.addEventListener("click", async (e) => {
-        const url = link.getAttribute("href");
-        try {
-          const resp = await fetch(url, { method: "HEAD" });
-          if (resp.status === 404) {
-            e.preventDefault();
-            // Find jobId from the entry by matching downloadUrl
-            const entries = this.#manager.getAll();
-            const entry = entries.find(en => en.downloadUrl === url);
-            if (entry) {
-              this.#manager.markExpired(entry.jobId);
-              this.#render();
-            }
-          }
-        } catch {
-          // Network error — let the download attempt proceed
-        }
+    // Intercept download button clicks — fetch as blob to avoid saving JSON on error
+    const downloadBtns = this.#container?.querySelectorAll(".btn-download-history") || [];
+    for (const btn of downloadBtns) {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        this.#handleHistoryDownload(btn);
       });
+    }
+  }
+
+  async #handleHistoryDownload(btn) {
+    const url = btn.getAttribute("data-url");
+    const filename = btn.getAttribute("data-filename") || "download";
+    const format = btn.getAttribute("data-format") || "mp3";
+    const originalHTML = btn.innerHTML;
+
+    if (!url || url.includes("undefined") || url.includes("null")) {
+      btn.innerHTML = '<span style="font-size:12px">Expired</span>';
+      btn.disabled = true;
+      // Mark entry expired in store
+      const entries = this.#manager.getAll();
+      const entry = entries.find(en => en.downloadUrl === url);
+      if (entry) this.#manager.markExpired(entry.jobId);
+      return;
+    }
+
+    btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:16px">hourglass_top</span>';
+    btn.disabled = true;
+
+    try {
+      const res = await fetch(url);
+
+      // If server returned JSON instead of audio, it's an error
+      const contentType = res.headers.get("Content-Type") ?? "";
+      if (contentType.includes("application/json")) {
+        const err = await res.json();
+        throw new Error(err.error ?? `HTTP ${res.status}`);
+      }
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      // Stream the blob and trigger download
+      const blob = await res.blob();
+      const dlUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = dlUrl;
+      a.download = `${filename}_8d.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(dlUrl);
+
+      btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:16px">check</span>';
+      setTimeout(() => {
+        btn.innerHTML = originalHTML;
+        btn.disabled = false;
+      }, 2000);
+
+    } catch (err) {
+      console.error("[HISTORY_DOWNLOAD]", err.message);
+
+      if (err.message.includes("expired") || err.message.includes("410")) {
+        btn.innerHTML = '<span style="font-size:12px">Expired</span>';
+        btn.disabled = true;
+        // Mark expired in store
+        const entries = this.#manager.getAll();
+        const entry = entries.find(en => en.downloadUrl === url);
+        if (entry) this.#manager.markExpired(entry.jobId);
+      } else {
+        btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:16px">error</span>';
+        setTimeout(() => {
+          btn.innerHTML = originalHTML;
+          btn.disabled = false;
+        }, 3000);
+      }
     }
   }
 }

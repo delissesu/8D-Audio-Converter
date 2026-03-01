@@ -106,7 +106,9 @@ export class PreviewToggleComponent {
         ${this.#active ? '<span class="preview-toggle__pulse"></span>' : ''}
       </button>
       <div style="font-size: 0.75rem; color: #9ca3af; margin-top: 0.5rem; text-align: center;">
-        Preview approximates the final output. Use headphones for best results.
+        Preview gives an approximation of the spatial effect.
+        The converted file will sound fuller and more accurate.
+        Use headphones for best preview results.
       </div>
     `;
 
