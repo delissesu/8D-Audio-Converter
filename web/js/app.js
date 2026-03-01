@@ -73,8 +73,12 @@ const btnErrBack = document.getElementById('btn-err-back');
 let selectedFile = null;
 let currentJobId = null;
 let pollingInterval = null;
+let abortController = new AbortController();
 let audioPlayer = null;
 let isPlaying = false;
+let audioCtx = null;
+let decodedPeaks = null;
+let rafId = null;
 
 // --- View Router ---
 function showView(viewName) {
@@ -217,23 +221,35 @@ function startProgressAnim(text) {
     progressCircle.style.strokeDashoffset = circumference;
 }
 
+function stopPolling() {
+    if (pollingInterval !== null) {
+        clearInterval(pollingInterval);
+        pollingInterval = null;
+    }
+}
+
 btnCancel.addEventListener('click', () => {
+    stopPolling();
     cleanupAudioAndPolling();
     resetUpload();
     showView('upload');
 });
 
+// P0 Fix 1: Stop polling explicitly, use AbortController
 function pollStatus(jobId, overrideFormat) {
     pollingInterval = setInterval(async () => {
         try {
             const status = await converter.getStatus(jobId);
             
-            // Update progress circle
+            // Update progress circle safely
             const pct = status.progress || 0;
             const offset = circumference - (pct / 100) * circumference;
-            progressCircle.style.strokeDashoffset = offset;
+            // P0 Fix 2: Avoid DOM write if it hasn't changed
+            if (progressCircle.style.strokeDashoffset !== `${offset}px`) {
+                progressCircle.style.strokeDashoffset = offset;
+            }
             
-            // Update text only when it changes (prevents flicker)
+            // Update text only when it changes (prevents flicker / DOM reparse)
             const newText = status.step || "Processing...";
             if (newText !== lastStatusText) {
                 lastStatusText = newText;
@@ -245,14 +261,14 @@ function pollStatus(jobId, overrideFormat) {
             }
 
             if (status.status === "done") {
-                clearInterval(pollingInterval);
+                stopPolling();
                 finishConversion(jobId, overrideFormat);
             } else if (status.status === "error") {
-                clearInterval(pollingInterval);
+                stopPolling();
                 showError(status.error, "ERR_CONVERT");
             }
         } catch (e) {
-            clearInterval(pollingInterval);
+            stopPolling();
             showError("Connection lost", "ERR_NETWORK");
         }
     }, 800);
@@ -300,10 +316,18 @@ function finishConversion(jobId, format) {
         audioPlayer.load(); // Release media resources
         audioPlayer = null;
     }
+    if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+    }
     
+    // P0 Fix 3: Decode once and cache peaks for the visualizer
+    decodeAndCacheAudio(downloadUrl).then(() => {
+        // Render static waveform initially
+        updatePlayheadBar(0);
+    });
+
     audioPlayer = new Audio(downloadUrl);
-    // Reset playhead: move accent to first bar
-    updatePlayheadBar(0);
     
     audioPlayer.addEventListener('loadedmetadata', () => {
         updateTimeDisplay(0, audioPlayer.duration);
@@ -311,11 +335,6 @@ function finishConversion(jobId, format) {
     
     audioPlayer.addEventListener('timeupdate', () => {
         updateTimeDisplay(audioPlayer.currentTime, audioPlayer.duration);
-        // Move accent color to the bar matching current playback position
-        if(audioPlayer.duration > 0) {
-            const pct = audioPlayer.currentTime / audioPlayer.duration;
-            updatePlayheadBar(pct);
-        }
     });
 
     audioPlayer.addEventListener('ended', () => {
@@ -337,6 +356,38 @@ function finishConversion(jobId, format) {
     showView('result');
 }
 
+// --- Audio decoding and Visualizer (P0 Fix 3) ---
+async function decodeAndCacheAudio(url) {
+    try {
+        const resp = await fetch(url);
+        const buf = await resp.arrayBuffer();
+        const tmpCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const audioBuf = await tmpCtx.decodeAudioData(buf);
+        
+        // Use the total number of bars in the DOM
+        const numSamples = waveformBars.length; 
+        decodedPeaks = extractPeaks(audioBuf, numSamples);
+        await tmpCtx.close();
+    } catch (e) {
+        console.warn("Could not decode audio for visualizer:", e);
+    }
+}
+
+function extractPeaks(audioBuf, numSamples) {
+    const data = audioBuf.getChannelData(0);
+    const step = Math.ceil(data.length / numSamples);
+    const peaks = new Float32Array(numSamples);
+    for (let i = 0; i < numSamples; i++) {
+        let max = 0;
+        for (let j = 0; j < step; j++) {
+            const v = Math.abs(data[i * step + j] || 0);
+            if (v > max) max = v;
+        }
+        peaks[i] = max;
+    }
+    return peaks;
+}
+
 function updateTimeDisplay(current, duration) {
     const formatTime = (sec) => {
         if(isNaN(sec)) return "00:00";
@@ -348,18 +399,39 @@ function updateTimeDisplay(current, duration) {
 }
 
 function updatePlayheadBar(pct) {
-    // Move the accent color to the bar matching current playback position
-    const bars = document.querySelectorAll('#waveform-container .waveform-bar');
-    const totalBars = bars.length;
-    if (totalBars === 0) return;
+    if (!waveformBars || waveformBars.length === 0) return;
+    const totalBars = waveformBars.length;
     const activeIndex = Math.min(Math.floor(pct * totalBars), totalBars - 1);
-    bars.forEach((bar, i) => {
+    
+    waveformBars.forEach((bar, i) => {
+        // If we have actual peaks, scale the bar height dynamically
+        if (decodedPeaks && decodedPeaks.length > i) {
+            // Apply a minimum height of 10% and maximum of 100%
+            const heightPct = Math.max(10, decodedPeaks[i] * 100);
+            bar.style.height = `${heightPct}%`;
+        }
+        
+        // Highlight active playhead
         if (i === activeIndex) {
             bar.classList.add('bg-accent');
         } else {
             bar.classList.remove('bg-accent');
         }
     });
+}
+
+function renderVisualizerLoop() {
+    if (!isPlaying || !audioPlayer || audioPlayer.duration === 0) {
+        // P0 Fix 4: RAF stops when paused
+        if (rafId) cancelAnimationFrame(rafId);
+        rafId = null;
+        return;
+    }
+    
+    const pct = audioPlayer.currentTime / audioPlayer.duration;
+    updatePlayheadBar(pct);
+    
+    rafId = requestAnimationFrame(renderVisualizerLoop);
 }
 
 function setPlayingState(playing) {
@@ -369,10 +441,27 @@ function setPlayingState(playing) {
         iconPlay.classList.add('hidden');
         iconPause.classList.remove('hidden');
         container.classList.remove('waveform-paused');
+        
+        // P0 Fix 4: Start RAF loop
+        if (!rafId) {
+            rafId = requestAnimationFrame(renderVisualizerLoop);
+        }
     } else {
         iconPlay.classList.remove('hidden');
         iconPause.classList.add('hidden');
         container.classList.add('waveform-paused');
+        
+        // P0 Fix 4: Stop RAF loop explicitly
+        if (rafId) {
+            cancelAnimationFrame(rafId);
+            rafId = null;
+        }
+        
+        // Snap final position
+        if (audioPlayer && audioPlayer.duration) {
+            const pct = audioPlayer.currentTime / audioPlayer.duration;
+            updatePlayheadBar(pct);
+        }
     }
 }
 
@@ -434,17 +523,22 @@ document.getElementById('waveform-container').addEventListener('click', (e) => {
 });
 
 btnRestart.addEventListener('click', () => {
+    stopPolling();
     cleanupAudioAndPolling();
     resetUpload();
     showView('upload');
 });
 
 function cleanupAudioAndPolling() {
-    // Stop any active polling
-    if (pollingInterval) {
-        clearInterval(pollingInterval);
-        pollingInterval = null;
+    stopPolling();
+    abortController.abort();
+    abortController = new AbortController();
+    
+    if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
     }
+    
     // Properly release audio resources
     if (audioPlayer) {
         audioPlayer.pause();
@@ -452,6 +546,11 @@ function cleanupAudioAndPolling() {
         audioPlayer.load();
         audioPlayer = null;
     }
+    if (audioCtx && audioCtx.state !== 'closed') {
+        audioCtx.close();
+        audioCtx = null;
+    }
+    decodedPeaks = null;
     isPlaying = false;
     lastStatusText = '';
 }
@@ -464,12 +563,14 @@ function showError(msg, code) {
 }
 
 btnErrBack.addEventListener('click', () => {
+    stopPolling();
     cleanupAudioAndPolling();
     resetUpload();
     showView('upload');
 });
 
 btnErrRetry.addEventListener('click', () => {
+    stopPolling();
     cleanupAudioAndPolling();
     if (selectedFile) {
         // Re-enable convert button before clicking
