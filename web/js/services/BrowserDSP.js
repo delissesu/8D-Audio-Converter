@@ -63,10 +63,17 @@ export class BrowserDSP {
       if (this.#abortController.signal.aborted) throw new DOMException("Aborted", "AbortError");
       onProgress(25);
 
-      // Create OfflineAudioContext
+      // Handling trim
+      const trimStart = params.trim_start || 0;
+      const trimEnd = params.trim_end || 0;
+      const totalDur = audioBuffer.duration;
+      const startSec = Math.max(0, trimStart);
+      const endSec = (trimEnd > 0 && trimEnd < totalDur) ? trimEnd : totalDur;
+      const trimDuration = Math.max(0.1, endSec - startSec);
+
       const numChannels = audioBuffer.numberOfChannels;
       const sampleRate = audioBuffer.sampleRate;
-      const length = audioBuffer.length;
+      const length = Math.max(1, Math.floor(trimDuration * sampleRate));
 
       const offlineCtx = new OfflineAudioContext(
         Math.max(2, numChannels),
@@ -110,7 +117,7 @@ export class BrowserDSP {
         source.connect(offlineCtx.destination);
       }
 
-      source.start(0);
+      source.start(0, startSec, trimDuration);
 
       if (this.#abortController.signal.aborted) throw new DOMException("Aborted", "AbortError");
       onProgress(75);

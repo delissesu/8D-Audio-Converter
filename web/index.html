@@ -222,15 +222,16 @@
 
         <!-- Drop Zone -->
         <div id="drop-zone" class="group relative w-full h-[200px] bg-white rounded-2xl border-2 border-dashed border-[#D1D1D6] hover:border-accent hover:bg-slate-50 transition-all duration-200 cursor-pointer flex flex-col items-center justify-center gap-4 shadow-soft">
-            <input aria-label="Upload audio file" id="audio-input" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" type="file" accept="audio/*" />
+            <input aria-label="Upload audio file" id="audio-input" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" type="file" accept="audio/*" multiple />
             
             <div class="size-12 rounded-full bg-background-light flex items-center justify-center text-primary group-hover:scale-110 transition-transform duration-200">
                 <span class="material-symbols-outlined text-2xl">cloud_upload</span>
             </div>
             
             <div class="text-center space-y-1" id="drop-text-container">
-                <p id="drop-primary-text" class="text-base font-bold text-primary">Drop audio source</p>
+                <p id="drop-primary-text" class="text-base font-bold text-primary">Drop audio source file(s)</p>
                 <p id="drop-secondary-text" class="text-sm text-muted">MP3, WAV, FLAC, OGG, AAC, M4A</p>
+                <p class="text-xs text-blue-500 font-medium mt-2">💡 Drop multiple files at once to convert them all!</p>
             </div>
         </div>
 
@@ -524,6 +525,10 @@
                 <span>DOWNLOAD MASTER</span>
                 <span class="material-symbols-outlined group-hover/download:translate-y-0.5 transition-transform">download</span>
             </button>
+            <button id="btn-share" class="w-full h-12 bg-surface hover:bg-background-light dark:bg-slate-700 dark:hover:bg-slate-600 text-primary dark:text-white font-semibold tracking-wide rounded-lg border border-border-color dark:border-slate-600 flex items-center justify-center gap-2 transition-all active:scale-[0.99]">
+                <span class="material-symbols-outlined mr-2">share</span>Share Link
+            </button>
+            <p id="share-status" class="text-xs text-muted text-center" hidden></p>
             <button id="btn-restart" class="flex items-center justify-center gap-1.5 text-muted hover:text-primary transition-colors text-sm font-medium py-2 group/back">
                 <span class="material-symbols-outlined text-lg group-hover/back:-translate-x-1 transition-transform">arrow_left_alt</span>
                 Start New Conversion

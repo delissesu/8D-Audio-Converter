@@ -775,6 +775,7 @@ def set_security_headers(response):
         "img-src 'self' data:; "
         "media-src 'self' blob:; "
         "connect-src 'self'; "
+        "worker-src 'self' blob:; "
         "object-src 'none'; "
         "base-uri 'self';"
     )

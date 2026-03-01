@@ -27,14 +27,16 @@ class ReverbEffect(IAudioEffect):
         wet_level: float = params.get("wet_level", 0.3)
         damping: float = params.get("damping", 0.5)
 
-        board: Pedalboard = Pedalboard([
-            Reverb(
-                room_size=room_size,
-                wet_level=wet_level,
-                dry_level=1.0 - wet_level,
-                damping=damping,
-            )
-        ])
+        board: Pedalboard = Pedalboard(
+            [
+                Reverb(
+                    room_size=room_size,
+                    wet_level=wet_level,
+                    dry_level=1.0 - wet_level,
+                    damping=damping,
+                )
+            ]
+        )
 
         # Pedalboard expects shape (channels, num_frames) — transpose in/out
         samples_t: np.ndarray = samples.T.astype(np.float32)

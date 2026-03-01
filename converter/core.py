@@ -17,17 +17,17 @@ from converter.utils import (
 
 
 def convert_to_8d(
-    input_path  : str,
-    output_path : str,
-    pan_speed   : float = 0.15,
-    pan_depth   : float = 1.0,
-    room_size   : float = 0.4,
-    wet_level   : float = 0.3,
-    damping     : float = 0.5,
+    input_path: str,
+    output_path: str,
+    pan_speed: float = 0.15,
+    pan_depth: float = 1.0,
+    room_size: float = 0.4,
+    wet_level: float = 0.3,
+    damping: float = 0.5,
     progress_callback: Optional[Callable[[int, int, str], None]] = None,
     effect_chain: Optional[List] = None,
-    trim_start  : float = 0.0,
-    trim_end    : float = 0.0,
+    trim_start: float = 0.0,
+    trim_end: float = 0.0,
 ) -> None:
     """
     Full pipeline: load audio → apply effects → normalize → save.
@@ -44,14 +44,14 @@ def convert_to_8d(
         effect_chain: Optional list of IAudioEffect instances. If provided,
                       these are used instead of the default panning+reverb.
     """
-    # ── Validate inputs ──────────────────────────────────────────
+    # Validate inputs
     validate_input_file(input_path)
     validate_output_path(output_path)
     validate_param_range(pan_speed, "pan_speed", 0.01, 2.0)
     validate_param_range(pan_depth, "pan_depth", 0.0, 1.0)
     validate_param_range(room_size, "room_size", 0.0, 1.0)
     validate_param_range(wet_level, "wet_level", 0.0, 1.0)
-    validate_param_range(damping,   "damping",   0.0, 1.0)
+    validate_param_range(damping, "damping", 0.0, 1.0)
 
     # Build params dict for effect chain
     params: dict = {
@@ -59,7 +59,7 @@ def convert_to_8d(
         "pan_depth": pan_depth,
         "room_size": room_size,
         "wet_level": wet_level,
-        "damping":   damping,
+        "damping": damping,
     }
 
     # Determine steps — if effect chain provided, use effect names
@@ -67,10 +67,14 @@ def convert_to_8d(
 
     if use_chain:
         effect_step_names = [f"Applying {e.display_name}" for e in effect_chain]
-        steps = ["Loading audio file"] + effect_step_names + [
-            "Normalizing audio",
-            "Exporting to target format",
-        ]
+        steps = (
+            ["Loading audio file"]
+            + effect_step_names
+            + [
+                "Normalizing audio",
+                "Exporting to target format",
+            ]
+        )
     else:
         steps = [
             "Loading audio file",
@@ -94,7 +98,7 @@ def convert_to_8d(
 
     # P2: Audio duration cap — prevent decompression bombs
     duration_sec = len(audio_segment) / 1000.0
-    if duration_sec > 600:   # 10 minutes
+    if duration_sec > 600:  # 10 minutes
         raise ValueError(
             f"Audio too long: {duration_sec:.0f}s (max 600s / 10 min).\n"
             f"    → Use a shorter audio file."
@@ -120,11 +124,17 @@ def convert_to_8d(
         samples = np.column_stack([samples, samples])
 
     # Apply trim if specified
-    if trim_start > 0 or trim_end > 0:
-        total_dur = len(samples) / sr
-        start_frame = max(0, int(trim_start * sr)) if trim_start > 0 else 0
-        end_frame = min(len(samples), int(trim_end * sr)) if trim_end > 0 and trim_end < total_dur else len(samples)
-        if start_frame < end_frame:
+    # Trim when: end > start AND end is non-zero (indicates real trim selection)
+    total_dur = len(samples) / sr
+    should_trim = (
+        trim_end > trim_start
+        and trim_end > 0
+        and (trim_start > 0 or trim_end < total_dur - 0.01)
+    )
+    if should_trim:
+        start_frame = max(0, int(trim_start * sr))
+        end_frame = min(len(samples), int(trim_end * sr))
+        if end_frame > start_frame:
             samples = samples[start_frame:end_frame]
 
     # Apply effects
@@ -159,4 +169,3 @@ def convert_to_8d(
         finally:
             if os.path.exists(tmp_out):
                 os.remove(tmp_out)
-
