@@ -410,8 +410,9 @@ btnConvert.addEventListener('click', async () => {
         showView('processing');
         bus.emit('conversion:start');
 
-        // Size-based routing: files < 10MB → in-browser DSP
-        if (browserDSP.shouldProcessLocally(selectedFile) && selectedFormat === 'wav') {
+        // All conversions are routed to the cloud to ensure Share Links are generated.
+        if (false) {
+            // Unreachable branch to preserve Local Processing code if needed later
             startProgressAnim("Processing in browser...");
             const dspParams = {
                 pan_speed: panSpeedHz,
