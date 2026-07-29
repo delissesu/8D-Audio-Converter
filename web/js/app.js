@@ -6,18 +6,15 @@ import { PreviewToggleComponent } from "./components/PreviewToggleComponent.js";
 import { HistoryPanelComponent } from "./components/HistoryPanelComponent.js";
 import { FileQueueComponent } from "./components/FileQueueComponent.js";
 import { WaveformEditorComponent } from "./components/WaveformEditorComponent.js";
-import { BrowserDSP } from "./services/BrowserDSP.js";
 import { EventBus } from "./core/EventBus.js";
+import { updateSliderTrack } from "./utils/sliders.js";
 
 const converter = new AudioConverter("");
 const bus = EventBus.getInstance();
-const browserDSP = new BrowserDSP();
 
-// Global trim state
 let currentTrimStart = 0;
 let currentTrimEnd = 0;
 
-// ── Security helpers ────────────────────────────────────────────
 function escapeHTML(str) {
     const el = document.createElement("div");
     el.appendChild(document.createTextNode(str));
@@ -43,8 +40,6 @@ function validateFile(file) {
     return null;
 }
 
-// --- DOM Elements ---
-// Views
 const views = {
     upload: document.getElementById('view-upload'),
     processing: document.getElementById('view-processing'),
@@ -52,7 +47,6 @@ const views = {
     error: document.getElementById('view-error')
 };
 
-// Upload View
 const dropZone = document.getElementById('drop-zone');
 const audioInput = document.getElementById('audio-input');
 const dropPrimaryText = document.getElementById('drop-primary-text');
@@ -80,17 +74,14 @@ const dampingSlider = document.getElementById('damping');
 const dampingVal = document.getElementById('damping-val');
 const dampingTrack = document.getElementById('damping-track');
 
-// Processing View
 const progressCircle = document.getElementById('progress-circle');
 const statusDetail = document.getElementById('status-detail');
 const btnCancel = document.getElementById('btn-cancel');
 
-// Mute button
 const btnMute = document.getElementById('btn-mute');
 const iconVolume = document.getElementById('icon-volume');
 let savedVolume = 0.8;
 
-// Result View
 const resultFilename = document.getElementById('result-filename');
 const resultSize = document.getElementById('result-size');
 const playbackTime = document.getElementById('playback-time');
@@ -105,13 +96,11 @@ const btnRestart = document.getElementById('btn-restart');
 const resultSettings = document.getElementById('result-settings');
 const waveformBars = document.querySelectorAll('#waveform-container .waveform-bar');
 
-// Error View
 const errorMessage = document.getElementById('error-message');
 const errorCode = document.getElementById('error-code');
 const btnErrRetry = document.getElementById('btn-err-retry');
 const btnErrBack = document.getElementById('btn-err-back');
 
-// --- Global State ---
 let selectedFile = null;
 let currentJobId = null;
 let pollingInterval = null;
@@ -122,14 +111,11 @@ let audioCtx = null;
 let decodedPeaks = null;
 let rafId = null;
 
-// --- View Router ---
 function showView(viewName) {
     Object.values(views).forEach(v => v.classList.add('view-hidden'));
     views[viewName].classList.remove('view-hidden');
 }
 
-// --- Upload & Config Logic ---
-// Drag and Drop
 ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evt => {
     dropZone.addEventListener(evt, e => {
         e.preventDefault();
@@ -148,7 +134,6 @@ function showView(viewName) {
 dropZone.addEventListener('drop', e => {
     const files = e.dataTransfer.files;
     if (files.length > 1) {
-        // Multi-file drop → batch queue
         fileQueue.addFiles(files);
     } else if (files.length === 1) {
         handleFile(files[0]);
@@ -164,14 +149,12 @@ audioInput.addEventListener('change', () => {
 });
 
 function handleFile(file) {
-    // P1: Client-side file validation
     const error = validateFile(file);
     if (error) {
         alert(error);
         return;
     }
     selectedFile = file;
-    // P1: Use textContent (safe) — never innerHTML with user data
     dropPrimaryText.textContent = file.name;
     dropSecondaryText.textContent = (file.size / (1024 * 1024)).toFixed(2) + " MB";
     dropPrimaryText.classList.add('text-accent');
@@ -179,13 +162,6 @@ function handleFile(file) {
     btnConvert.classList.remove('opacity-50', 'cursor-not-allowed', 'bg-muted');
     btnConvert.classList.add('bg-primary', 'hover:bg-primary-hover', 'shadow-lg');
     bus.emit('file:selected', file);
-}
-
-// Sliders formatting
-function updateSliderTrack(slider, track, reverse = false) {
-    let pct = ((slider.value - slider.min) / (slider.max - slider.min)) * 100;
-    if (reverse) pct = 100 - pct; // For speed, lower number = faster (so more "filled" visually is up to choice, but let's stick to standard)
-    track.style.width = `${pct}%`;
 }
 
 speedSlider.addEventListener('input', () => {
@@ -218,20 +194,13 @@ dampingSlider.addEventListener('input', () => {
     updatePreviewIfPlaying();
 });
 
-// Init tracks
 updateSliderTrack(speedSlider, speedTrack);
 updateSliderTrack(reverbSlider, reverbTrack);
 updateSliderTrack(crossfeedSlider, crossfeedTrack);
 updateSliderTrack(depthSlider, depthTrack);
 updateSliderTrack(dampingSlider, dampingTrack);
 
-// ── Preset System ───────────────────────────────────────────────
 
-/**
- * Read current slider positions and return backend-ready params.
- * Speed: slider value in seconds → Hz = 1/seconds
- * Others: slider 0–100 → 0.0–1.0
- */
 function getCurrentParams() {
   const speedSeconds = parseFloat(speedSlider.value);
   return {
@@ -243,89 +212,71 @@ function getCurrentParams() {
   };
 }
 
-/**
- * Apply preset params (backend-ready) to the slider UI.
- * Reverse-maps Hz → seconds, 0–1 → 0–100.
- */
 function applyPresetToSliders(params) {
-  // Speed: Hz → seconds.  Hz = 1/s → s = 1/Hz
   const seconds = Math.min(10, Math.max(1, Math.round((1.0 / params.pan_speed) * 2) / 2));
   speedSlider.value = seconds;
   speedVal.textContent = parseFloat(seconds).toFixed(1) + 's';
   updateSliderTrack(speedSlider, speedTrack);
 
-  // Depth: 0–1 → 0–100
   depthSlider.value = Math.round(params.pan_depth * 100);
   depthVal.textContent = depthSlider.value + '%';
   updateSliderTrack(depthSlider, depthTrack);
 
-  // Room size: 0–1 → 0–100
   reverbSlider.value = Math.round(params.room_size * 100);
   reverbVal.textContent = reverbSlider.value + '%';
   updateSliderTrack(reverbSlider, reverbTrack);
 
-  // Wet level (crossfeed): 0–1 → 0–100
   crossfeedSlider.value = Math.round(params.wet_level * 100);
   crossfeedVal.textContent = crossfeedSlider.value + '%';
   updateSliderTrack(crossfeedSlider, crossfeedTrack);
 
-  // Damping: 0–1 → 0–100
   dampingSlider.value = Math.round(params.damping * 100);
   dampingVal.textContent = dampingSlider.value + '%';
   updateSliderTrack(dampingSlider, dampingTrack);
 }
 
-// Mount Preset Picker
 const presetPicker = new PresetPickerComponent();
 const presetSlot = document.getElementById('preset-picker-slot');
 if (presetSlot) {
   presetPicker.mount(presetSlot);
 }
 
-// Mount History Panel
 const historyPanel = new HistoryPanelComponent();
 const historySlot = document.getElementById('history-panel-slot');
 if (historySlot) {
   historyPanel.mount(historySlot);
 }
 
-// Mount File Queue (Batch)
 const fileQueue = new FileQueueComponent();
 const fileQueueSlot = document.getElementById('file-queue-slot');
 if (fileQueueSlot) {
   fileQueue.mount(fileQueueSlot);
 }
 
-// Mount Waveform Editor (Trim)
 const waveformEditor = new WaveformEditorComponent();
 const waveformSlot = document.getElementById('waveform-editor-slot');
 if (waveformSlot) {
   waveformEditor.mount(waveformSlot);
 }
 
-// Listen for trim changes
 bus.on('trim:changed', ({ start, end }) => {
   currentTrimStart = start;
   currentTrimEnd = end;
 });
 
-// Listen for preset:loaded → update sliders
 bus.on('preset:loaded', (params) => {
   applyPresetToSliders(params);
 });
 
-// Listen for preset:request-params → respond with current slider values
 bus.on('preset:request-params', () => {
   bus.emit('preset:request-params-response', getCurrentParams());
 });
 
-// Auto-load preset from URL (share link)
 const urlPreset = PresetManager.fromUrl();
 if (urlPreset) {
   applyPresetToSliders(urlPreset);
 }
 
-// ── Real-Time Preview System ────────────────────────────────────
 const realtimePreview = new RealtimePreview();
 const previewToggle = new PreviewToggleComponent();
 const previewToggleSlot = document.getElementById('preview-toggle-slot');
@@ -333,11 +284,9 @@ if (previewToggleSlot) {
   previewToggle.mount(previewToggleSlot);
 }
 
-// Handle preview start: load excerpt then play with current params
 bus.on('preview:start', async () => {
   if (!selectedFile) return;
   try {
-    // Read latest trim values at preview start time
     const trim = waveformEditor?.getTrimValues() ?? { start: 0, end: 0 };
     await realtimePreview.loadExcerpt(selectedFile, trim);
     bus.emit('preview:loaded');
@@ -348,44 +297,33 @@ bus.on('preview:start', async () => {
   }
 });
 
-// Handle preview stop
 bus.on('preview:stop', () => {
   realtimePreview.stop();
 });
 
-// Stop preview when conversion starts
 bus.on('conversion:start', () => {
   realtimePreview.stop();
   previewToggle.setInactive();
 });
 
-// Live-update preview when sliders change
 function updatePreviewIfPlaying() {
   if (realtimePreview.isPlaying) {
     realtimePreview.updateParams(getCurrentParams());
   }
 }
 
-// Convert Action
 btnConvert.addEventListener('click', async () => {
     if (!selectedFile || btnConvert.disabled) return;
 
-    // Disable to prevent double-click
     btnConvert.setAttribute('disabled', 'true');
     btnConvert.classList.add('opacity-50', 'cursor-not-allowed');
 
-    // Build params
     let selectedFormat = 'mp3';
     formatRadios.forEach(r => { if (r.checked) selectedFormat = r.value; });
 
-    // Map UI values to backend-expected ranges:
-    //   speed slider: 1–10 seconds → pan_speed Hz = 1/seconds (clamped 0.01–2.0)
-    //   reverb slider: 0–100% → room_size 0.0–1.0
-    //   crossfeed slider: 0–100% → wet_level 0.0–1.0
     const speedSeconds = parseFloat(speedSlider.value);
     const panSpeedHz = Math.min(2.0, Math.max(0.01, 1.0 / speedSeconds));
 
-    // Read trim directly from waveformEditor at convert time for reliability
     let trimStart = currentTrimStart;
     let trimEnd = currentTrimEnd;
     if (waveformEditor && typeof waveformEditor.getTrimValues === 'function') {
@@ -409,36 +347,12 @@ btnConvert.addEventListener('click', async () => {
     try {
         showView('processing');
         bus.emit('conversion:start');
-
-        // All conversions are routed to the cloud to ensure Share Links are generated.
-        if (false) {
-            // Unreachable branch to preserve Local Processing code if needed later
-            startProgressAnim("Processing in browser...");
-            const dspParams = {
-                pan_speed: panSpeedHz,
-                pan_depth: params.depth,
-                room_size: params.room,
-                wet_level: params.wet,
-                damping: params.damping,
-                trim_start: trimStart,
-                trim_end: trimEnd
-            };
-            const wavBlob = await browserDSP.process(selectedFile, dspParams, (pct) => {
-                updateProgressBar(pct);
-            });
-            // Create a download URL from the blob
-            const url = URL.createObjectURL(wavBlob);
-            const baseName = selectedFile.name.replace(/\.[^.]+$/, '');
-            finishConversionLocal(url, baseName + '_8d.wav', selectedFile, selectedFormat);
-        } else {
-            startProgressAnim("Uploading audio...");
-            currentJobId = await converter.startConversion(selectedFile, selectedFormat, params);
-            pollStatus(currentJobId, selectedFormat);
-        }
+        startProgressAnim("Uploading audio...");
+        currentJobId = await converter.startConversion(selectedFile, selectedFormat, params);
+        pollStatus(currentJobId, selectedFormat);
     } catch (err) {
         showError(err.message, "ERR_UPLOAD");
     } finally {
-        // Re-enable convert button if we return to upload view
         if (selectedFile) {
             btnConvert.removeAttribute('disabled');
             btnConvert.classList.remove('opacity-50', 'cursor-not-allowed');
@@ -446,7 +360,6 @@ btnConvert.addEventListener('click', async () => {
     }
 });
 
-// --- Processing Logic ---
 const circumference = 289; // 2 * pi * 46
 
 let lastStatusText = '';
@@ -479,21 +392,17 @@ btnCancel.addEventListener('click', () => {
     showView('upload');
 });
 
-// P0 Fix 1: Stop polling explicitly, use AbortController
 function pollStatus(jobId, overrideFormat) {
     pollingInterval = setInterval(async () => {
         try {
             const status = await converter.getStatus(jobId);
             
-            // Update progress circle safely
             const pct = status.progress || 0;
             const offset = circumference - (pct / 100) * circumference;
-            // P0 Fix 2: Avoid DOM write if it hasn't changed
             if (progressCircle.style.strokeDashoffset !== `${offset}px`) {
                 progressCircle.style.strokeDashoffset = offset;
             }
             
-            // Update text only when it changes (prevents flicker / DOM reparse)
             const newText = status.step || "Processing...";
             if (newText !== lastStatusText) {
                 lastStatusText = newText;
@@ -519,15 +428,12 @@ function pollStatus(jobId, overrideFormat) {
 }
 
 function finishConversion(jobId, format) {
-    // Set UI - preserve original filename and append _8d
     let baseName = "spatial_render";
     if (selectedFile && selectedFile.name) {
-        // Strip extension
         baseName = selectedFile.name.replace(/\.[^/.]+$/, "");
     }
     const finalFilename = `${baseName}_8d.${format}`;
     
-    // Get download URL using the dynamically generated filename
     const downloadUrl = converter.getDownloadUrl(jobId, finalFilename);
     
     resultFilename.textContent = finalFilename;
@@ -535,7 +441,6 @@ function finishConversion(jobId, format) {
 
     let computedSizeMb = null;
 
-    // Fetch file size via HEAD request
     fetch(downloadUrl, { method: 'HEAD' })
         .then(res => {
             const bytes = parseInt(res.headers.get('content-length') || '0', 10);
@@ -548,7 +453,6 @@ function finishConversion(jobId, format) {
         })
         .catch(() => { resultSize.textContent = 'Ready'; })
         .finally(() => {
-            // Emit conversion complete event for HistoryManager after size is known
             bus.emit('conversion:complete', {
                 jobId: jobId,
                 filename: baseName,
@@ -567,7 +471,6 @@ function finishConversion(jobId, format) {
         <span>DAMPING: ${dampingSlider.value}%</span>
     `;
 
-    // Properly clean up old audio player
     if (audioPlayer) {
         audioPlayer.pause();
         audioPlayer.removeAttribute('src');
@@ -579,9 +482,7 @@ function finishConversion(jobId, format) {
         rafId = null;
     }
     
-    // P0 Fix 3: Decode once and cache peaks for the visualizer
     decodeAndCacheAudio(downloadUrl).then(() => {
-        // Render static waveform initially
         updatePlayheadBar(0);
     });
 
@@ -609,14 +510,12 @@ function finishConversion(jobId, format) {
     };
 
     if (btnShare) {
-        // Reset share button
         btnShare.innerHTML = '<span class="material-symbols-outlined mr-2">share</span>Share Link';
         btnShare.disabled = false;
         
         const shareStatus = document.getElementById('share-status');
 
         btnShare.onclick = async () => {
-            // Guard: ensure jobId is valid
             if (!jobId) {
                 console.error("[Share] jobId is undefined — cannot create share link");
                 btnShare.innerHTML = '<span class="material-symbols-outlined mr-2">error</span>No Job ID';
@@ -630,11 +529,9 @@ function finishConversion(jobId, format) {
                 btnShare.disabled = true;
                 btnShare.innerHTML = '<span class="material-symbols-outlined mr-2 animate-spin">refresh</span>Generating...';
                 
-                // Step 1: Generate share link on the server
                 const data = await converter.createShareLink(jobId);
                 const shareUrl = data.shareUrl;
 
-                // Step 2: Copy to clipboard with fallback
                 let copied = false;
                 try {
                     if (navigator.clipboard && window.isSecureContext) {
@@ -642,11 +539,9 @@ function finishConversion(jobId, format) {
                         copied = true;
                     }
                 } catch (_clipErr) {
-                    // Clipboard API failed — try fallback below
                 }
 
                 if (!copied) {
-                    // Fallback: use deprecated execCommand("copy")
                     try {
                         const ta = document.createElement("textarea");
                         ta.value = shareUrl;
@@ -665,7 +560,6 @@ function finishConversion(jobId, format) {
                 if (copied) {
                     btnShare.innerHTML = '<span class="material-symbols-outlined mr-2">check</span>Copied!';
                 } else {
-                    // Could not copy — still show the URL so user can copy manually
                     btnShare.innerHTML = '<span class="material-symbols-outlined mr-2">check</span>Link Ready';
                 }
                 btnShare.classList.add('bg-green-100', 'text-green-700', 'border-green-200');
@@ -677,7 +571,6 @@ function finishConversion(jobId, format) {
                     const urlDisplay = copied ? expiryText : `${shareUrl}  —  ${expiryText}`;
                     shareStatus.textContent = urlDisplay;
                     shareStatus.hidden = false;
-                    // Allow manual selection if clipboard failed
                     if (!copied) shareStatus.style.userSelect = 'text';
                 }
                 
@@ -706,70 +599,10 @@ function finishConversion(jobId, format) {
     audioPlayer.volume = 0.8;
     updateSliderTrack(volumeSlider, volumeTrack);
 
-    // (Event emitted inside the HEAD request handler above)
 
     showView('result');
 }
 
-function finishConversionLocal(url, finalFilename, file, format) {
-    resultFilename.textContent = finalFilename;
-    const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
-    resultSize.textContent = `${sizeMb} MB (Local)`;
-
-    resultSettings.innerHTML = `
-        <span>SPEED: ${parseFloat(speedSlider.value).toFixed(1)}s</span><span class="text-border-color">|</span>
-        <span>DEPTH: ${depthSlider.value}%</span><span class="text-border-color">|</span>
-        <span>REVERB: ${reverbSlider.value}%</span><span class="text-border-color">|</span>
-        <span>X-FEED: ${crossfeedSlider.value}%</span><span class="text-border-color">|</span>
-        <span>DAMPING: ${dampingSlider.value}%</span>
-    `;
-
-    if (audioPlayer) {
-        audioPlayer.pause();
-        audioPlayer.removeAttribute('src');
-        audioPlayer.load();
-        audioPlayer = null;
-    }
-    if (rafId) {
-        cancelAnimationFrame(rafId);
-        rafId = null;
-    }
-
-    decodeAndCacheAudio(url).then(() => updatePlayheadBar(0));
-
-    audioPlayer = new Audio(url);
-    audioPlayer.addEventListener('loadedmetadata', () => updateTimeDisplay(0, audioPlayer.duration));
-    audioPlayer.addEventListener('timeupdate', () => updateTimeDisplay(audioPlayer.currentTime, audioPlayer.duration));
-    audioPlayer.addEventListener('ended', () => setPlayingState(false));
-
-    btnDownload.onclick = () => {
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = finalFilename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-    };
-
-    if (btnShare) {
-        btnShare.disabled = true;
-        btnShare.title = "Share link is only available for cloud conversions";
-        btnShare.innerHTML = '<span class="material-symbols-outlined mr-2">cloud_off</span>Local Output';
-    }
-
-    bus.emit('conversion:complete', {
-        jobId: null,  // local conversions have no server job ID
-        filename: finalFilename.replace(/\.[^/.]+$/, ""),
-        format: format,
-        downloadUrl: url,
-        sizeMb: parseFloat(sizeMb),
-        expiry: Date.now() + (24 * 60 * 60 * 1000)
-    });
-
-    showView('result');
-}
-
-// --- Audio decoding and Visualizer (P0 Fix 3) ---
 async function decodeAndCacheAudio(url) {
     try {
         const resp = await fetch(url);
@@ -777,7 +610,6 @@ async function decodeAndCacheAudio(url) {
         const tmpCtx = new (window.AudioContext || window.webkitAudioContext)();
         const audioBuf = await tmpCtx.decodeAudioData(buf);
         
-        // Use the total number of bars in the DOM
         const numSamples = waveformBars.length; 
         decodedPeaks = extractPeaks(audioBuf, numSamples);
         await tmpCtx.close();
@@ -817,14 +649,11 @@ function updatePlayheadBar(pct) {
     const activeIndex = Math.min(Math.floor(pct * totalBars), totalBars - 1);
     
     waveformBars.forEach((bar, i) => {
-        // If we have actual peaks, scale the bar height dynamically
         if (decodedPeaks && decodedPeaks.length > i) {
-            // Apply a minimum height of 10% and maximum of 100%
             const heightPct = Math.max(10, decodedPeaks[i] * 100);
             bar.style.height = `${heightPct}%`;
         }
         
-        // Highlight active playhead
         if (i === activeIndex) {
             bar.classList.add('bg-accent');
         } else {
@@ -835,7 +664,6 @@ function updatePlayheadBar(pct) {
 
 function renderVisualizerLoop() {
     if (!isPlaying || !audioPlayer || audioPlayer.duration === 0) {
-        // P0 Fix 4: RAF stops when paused
         if (rafId) cancelAnimationFrame(rafId);
         rafId = null;
         return;
@@ -855,7 +683,6 @@ function setPlayingState(playing) {
         iconPause.classList.remove('hidden');
         container.classList.remove('waveform-paused');
         
-        // P0 Fix 4: Start RAF loop
         if (!rafId) {
             rafId = requestAnimationFrame(renderVisualizerLoop);
         }
@@ -864,13 +691,11 @@ function setPlayingState(playing) {
         iconPause.classList.add('hidden');
         container.classList.add('waveform-paused');
         
-        // P0 Fix 4: Stop RAF loop explicitly
         if (rafId) {
             cancelAnimationFrame(rafId);
             rafId = null;
         }
         
-        // Snap final position
         if (audioPlayer && audioPlayer.duration) {
             const pct = audioPlayer.currentTime / audioPlayer.duration;
             updatePlayheadBar(pct);
@@ -895,7 +720,6 @@ volumeSlider.addEventListener('input', () => {
     updateVolumeIcon(parseFloat(volumeSlider.value));
 });
 
-// Mute toggle
 btnMute.addEventListener('click', () => {
     if (!audioPlayer) return;
     if (audioPlayer.volume > 0) {
@@ -920,7 +744,6 @@ function updateVolumeIcon(vol) {
     }
 }
 
-// Waveform click-to-seek
 document.getElementById('waveform-container').addEventListener('click', (e) => {
     if (!audioPlayer || !audioPlayer.duration) return;
     const bars = document.querySelectorAll('#waveform-container .waveform-bar');
@@ -952,7 +775,6 @@ function cleanupAudioAndPolling() {
         rafId = null;
     }
     
-    // Properly release audio resources
     if (audioPlayer) {
         audioPlayer.pause();
         audioPlayer.removeAttribute('src');
@@ -968,7 +790,6 @@ function cleanupAudioAndPolling() {
     lastStatusText = '';
 }
 
-// --- Error Logic ---
 function showError(msg, code) {
     errorMessage.textContent = msg || "An unknown error occurred.";
     errorCode.textContent = code || "ERR_UNKNOWN";
@@ -986,7 +807,6 @@ btnErrRetry.addEventListener('click', () => {
     stopPolling();
     cleanupAudioAndPolling();
     if (selectedFile) {
-        // Re-enable convert button before clicking
         btnConvert.removeAttribute('disabled');
         btnConvert.classList.remove('opacity-50', 'cursor-not-allowed', 'bg-muted');
         btnConvert.classList.add('bg-primary', 'hover:bg-primary-hover', 'shadow-lg');
@@ -996,7 +816,6 @@ btnErrRetry.addEventListener('click', () => {
     }
 });
 
-// --- Utilities ---
 function resetUpload() {
     selectedFile = null;
     audioInput.value = '';
@@ -1006,7 +825,6 @@ function resetUpload() {
     btnConvert.setAttribute('disabled', 'true');
     btnConvert.classList.add('opacity-50', 'cursor-not-allowed', 'bg-muted');
     btnConvert.classList.remove('bg-primary', 'hover:bg-primary-hover', 'shadow-lg');
-    // Stop and cleanup preview
     realtimePreview.teardown();
     previewToggle.setInactive();
     bus.emit('app:reset');

@@ -1,6 +1,3 @@
-// web/js/components/FileQueueComponent.js
-// Multi-file queue UI for batch conversion.
-// Uses EventBus for communication — emits "batch:start", "batch:done".
 
 import { EventBus } from "../core/EventBus.js";
 
@@ -11,55 +8,35 @@ function escapeHTML(str) {
 }
 
 export class FileQueueComponent {
-  /** @type {HTMLElement|null} */
   #container = null;
-  /** @type {EventBus} */
   #bus = null;
-  /** @type {File[]} */
   #files = [];
-  /** @type {string|null} */
   #batchId = null;
-  /** @type {object[]} */
   #jobStatuses = [];
-  /** @type {number|null} */
   #pollInterval = null;
-  /** @type {boolean} */
-  #converting = false;
+  #isConverting = false;
 
   constructor() {
     this.#bus = EventBus.getInstance();
   }
 
-  /**
-   * Mount into a DOM container.
-   * @param {HTMLElement} container
-   */
   mount(container) {
     this.#container = container;
     this.#render();
   }
 
-  /**
-   * Clean up.
-   */
   unmount() {
     this.#stopPolling();
     if (this.#container) this.#container.innerHTML = "";
     this.#container = null;
   }
 
-  /**
-   * Add files from a file input or drag-and-drop.
-   * @param {FileList|File[]} files
-   */
   addFiles(files) {
     const arr = Array.from(files);
-    // Limit to 20 files total
     const remaining = 20 - this.#files.length;
     const toAdd = arr.slice(0, remaining);
 
     for (const f of toAdd) {
-      // Deduplicate by name+size
       const exists = this.#files.some(
         (existing) => existing.name === f.name && existing.size === f.size
       );
@@ -71,10 +48,6 @@ export class FileQueueComponent {
     this.#render();
   }
 
-  /**
-   * Remove a file from the queue by index.
-   * @param {number} index
-   */
   removeFile(index) {
     if (index >= 0 && index < this.#files.length) {
       this.#files.splice(index, 1);
@@ -82,38 +55,30 @@ export class FileQueueComponent {
     }
   }
 
-  /**
-   * Clear all files and reset state.
-   */
   clear() {
     this.#files = [];
     this.#batchId = null;
     this.#jobStatuses = [];
-    this.#converting = false;
+    this.#isConverting = false;
     this.#stopPolling();
     this.#render();
   }
 
-  /**
-   * @returns {number}
-   */
   get fileCount() {
     return this.#files.length;
   }
 
-  // ── Private ────────────────────────────────────────────────
 
   #render() {
     if (!this.#container) return;
 
-    if (this.#files.length === 0 && !this.#converting) {
+    if (this.#files.length === 0 && !this.#isConverting) {
       this.#container.innerHTML = "";
       return;
     }
 
     let html = `<div class="file-queue">`;
 
-    // Header
     html += `
       <div class="file-queue__header">
         <div class="file-queue__header-left">
@@ -121,12 +86,11 @@ export class FileQueueComponent {
           <span class="file-queue__title">Batch Queue</span>
           <span class="file-queue__badge">${this.#files.length}</span>
         </div>
-        ${!this.#converting ? `
+        ${!this.#isConverting ? `
           <button id="file-queue-clear" class="file-queue__clear-btn">Clear All</button>
         ` : ""}
       </div>`;
 
-    // File list
     html += `<div class="file-queue__list">`;
 
     for (let i = 0; i < this.#files.length; i++) {
@@ -163,7 +127,7 @@ export class FileQueueComponent {
           </div>
           <div class="file-queue__item-actions">
             ${statusHtml}
-            ${!this.#converting ? `
+            ${!this.#isConverting ? `
               <button class="file-queue__remove-btn" data-index="${i}" title="Remove">
                 <span class="material-symbols-outlined" style="font-size:16px">close</span>
               </button>
@@ -174,8 +138,7 @@ export class FileQueueComponent {
 
     html += `</div>`; // end list
 
-    // Actions footer
-    if (!this.#converting && this.#files.length > 0 && !this.#batchId) {
+    if (!this.#isConverting && this.#files.length > 0 && !this.#batchId) {
       html += `
         <div class="file-queue__footer">
           <button id="file-queue-add-more" class="file-queue__add-btn">
@@ -188,8 +151,7 @@ export class FileQueueComponent {
         </div>`;
     }
 
-    // Download ZIP button (when batch is done)
-    if (this.#batchId && !this.#converting) {
+    if (this.#batchId && !this.#isConverting) {
       const doneCount = this.#jobStatuses.filter(j => j?.status === "done").length;
       if (doneCount > 0) {
         html += `
@@ -212,12 +174,10 @@ export class FileQueueComponent {
   }
 
   #attachListeners() {
-    // Clear all
     this.#container?.querySelector("#file-queue-clear")?.addEventListener("click", () => {
       this.clear();
     });
 
-    // Remove individual
     this.#container?.querySelectorAll(".file-queue__remove-btn").forEach((btn) => {
       btn.addEventListener("click", () => {
         const idx = parseInt(btn.dataset.index, 10);
@@ -225,7 +185,6 @@ export class FileQueueComponent {
       });
     });
 
-    // Add more (hidden file input)
     this.#container?.querySelector("#file-queue-add-more")?.addEventListener("click", () => {
       const input = document.createElement("input");
       input.type = "file";
@@ -239,12 +198,10 @@ export class FileQueueComponent {
       input.click();
     });
 
-    // Convert all
     this.#container?.querySelector("#file-queue-convert")?.addEventListener("click", () => {
       this.#startBatchConversion();
     });
 
-    // Download ZIP
     this.#container?.querySelector("#file-queue-download-zip")?.addEventListener("click", () => {
       if (this.#batchId) {
         const a = document.createElement("a");
@@ -254,16 +211,15 @@ export class FileQueueComponent {
       }
     });
 
-    // New batch
     this.#container?.querySelector("#file-queue-new-batch")?.addEventListener("click", () => {
       this.clear();
     });
   }
 
   async #startBatchConversion() {
-    if (this.#files.length === 0 || this.#converting) return;
+    if (this.#files.length === 0 || this.#isConverting) return;
 
-    this.#converting = true;
+    this.#isConverting = true;
     this.#jobStatuses = this.#files.map(() => ({
       status: "queued",
       progress: 0,
@@ -273,26 +229,22 @@ export class FileQueueComponent {
 
     this.#bus.emit("batch:start", { count: this.#files.length });
 
-    // Build FormData with all files
     const formData = new FormData();
 
     for (const file of this.#files) {
       formData.append("files[]", file);
     }
 
-    // Read current params from sliders via EventBus request
     const params = await new Promise((resolve) => {
       const handler = (p) => {
         resolve(p);
       };
       this.#bus.on("preset:request-params-response", handler);
       this.#bus.emit("preset:request-params");
-      // Fallback if no response
       setTimeout(() => resolve(null), 100);
     });
 
     if (params) {
-      // Map UI params to server keys
       const speedSeconds = params.pan_speed || 8;
       const panSpeedHz = Math.min(2.0, Math.max(0.01, 1.0 / speedSeconds));
       formData.append("speed", panSpeedHz);
@@ -302,7 +254,6 @@ export class FileQueueComponent {
       formData.append("damping", params.damping || 0.5);
     }
 
-    // Get format from radio buttons
     const formatRadio = document.querySelector('input[name="format"]:checked');
     formData.append("format", formatRadio?.value || "mp3");
 
@@ -322,7 +273,7 @@ export class FileQueueComponent {
       this.#startPolling();
 
     } catch (err) {
-      this.#converting = false;
+      this.#isConverting = false;
       this.#jobStatuses = [];
       alert("Batch conversion failed: " + err.message);
       this.#render();
@@ -339,7 +290,6 @@ export class FileQueueComponent {
 
         const data = await resp.json();
 
-        // Update job statuses
         this.#jobStatuses = data.jobs.map((j) => ({
           status: j.status,
           progress: j.progress,
@@ -349,10 +299,9 @@ export class FileQueueComponent {
 
         this.#render();
 
-        // Check if batch is done
         if (data.status === "done") {
           this.#stopPolling();
-          this.#converting = false;
+          this.#isConverting = false;
           this.#bus.emit("batch:done", {
             total: data.total,
             done: data.done,
@@ -362,7 +311,6 @@ export class FileQueueComponent {
           this.#render();
         }
       } catch {
-        // Network error — continue polling
       }
     }, 1000);
   }

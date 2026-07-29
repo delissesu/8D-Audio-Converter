@@ -1,4 +1,3 @@
-/* web/css/components/progress.css */
 @import "../tokens.css";
 
 .progress-wrap  { padding: var(--space-6); }
@@ -10,7 +9,6 @@
   overflow           : hidden;
 }
 
-/* Animated shimmer gradient fill */
 .progress-bar-fill {
   height             : 100%;
   border-radius      : var(--radius-full);

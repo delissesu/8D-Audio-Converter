@@ -1,11 +1,7 @@
-// web/js/components/PresetPickerComponent.js
-// UI for selecting, saving, deleting, and sharing audio effect presets.
-// Uses the EventBus for communication — emits "preset:loaded" when a preset is applied.
 
 import { EventBus } from "../core/EventBus.js";
 import { PresetManager } from "../services/PresetManager.js";
 
-// ── Security helper ──────────────────────────────────────────────
 function escapeHTML(str) {
   const el = document.createElement("div");
   el.appendChild(document.createTextNode(str));
@@ -13,19 +9,12 @@ function escapeHTML(str) {
 }
 
 export class PresetPickerComponent {
-  /** @type {HTMLElement} */
   #container = null;
-  /** @type {PresetManager} */
   #manager = null;
-  /** @type {EventBus} */
   #bus = null;
-  /** @type {string|null} */
   #activePreset = null;
-  /** @type {boolean} */
-  #showSaveInput = false;
-  /** @type {HTMLElement|null} */
+  #shouldShowSaveInput = false;
   #toast = null;
-  /** @type {number|null} */
   #toastTimer = null;
 
   constructor() {
@@ -33,34 +22,20 @@ export class PresetPickerComponent {
     this.#bus = EventBus.getInstance();
   }
 
-  /**
-   * Mount the preset picker into a DOM container.
-   * @param {HTMLElement} container
-   */
   mount(container) {
     this.#container = container;
     this.#createToast();
     this.#render();
   }
 
-  /**
-   * Re-render the preset list (call after external state changes).
-   */
   refresh() {
     this.#render();
   }
 
-  /**
-   * Get the PresetManager instance for external access.
-   * @returns {PresetManager}
-   */
   get manager() {
     return this.#manager;
   }
 
-  /**
-   * Clean up (remove toast element).
-   */
   unmount() {
     if (this.#toast && this.#toast.parentNode) {
       this.#toast.parentNode.removeChild(this.#toast);
@@ -69,7 +44,6 @@ export class PresetPickerComponent {
     if (this.#container) this.#container.innerHTML = "";
   }
 
-  // ── Private: Rendering ─────────────────────────────────────────
 
   #render() {
     if (!this.#container) return;
@@ -78,18 +52,16 @@ export class PresetPickerComponent {
 
     let html = `<div class="preset-picker">`;
 
-    // Header
     html += `
       <div class="preset-picker__header">
         <span class="preset-picker__title">Presets</span>
-        <button id="preset-toggle-save" class="preset-save-row__btn preset-save-row__btn--${this.#showSaveInput ? 'cancel' : 'save'}" 
+        <button id="preset-toggle-save" class="preset-save-row__btn preset-save-row__btn--${this.#shouldShowSaveInput ? 'cancel' : 'save'}" 
                 style="height:28px; padding:0 12px; font-size:0.75rem;">
-          ${this.#showSaveInput ? 'Cancel' : '＋ Save Current'}
+          ${this.#shouldShowSaveInput ? 'Cancel' : '＋ Save Current'}
         </button>
       </div>`;
 
-    // Save input row (toggle visibility)
-    if (this.#showSaveInput) {
+    if (this.#shouldShowSaveInput) {
       html += `
         <div class="preset-save-row">
           <input type="text" id="preset-name-input" class="preset-save-row__input"
@@ -98,7 +70,6 @@ export class PresetPickerComponent {
         </div>`;
     }
 
-    // Preset grid
     html += `<div class="preset-grid">`;
 
     for (const preset of presets) {
@@ -134,42 +105,36 @@ export class PresetPickerComponent {
     this.#attachListeners();
   }
 
-  // ── Private: Event listeners ───────────────────────────────────
 
   #attachListeners() {
-    // Toggle save input
     const toggleBtn = this.#container.querySelector("#preset-toggle-save");
     if (toggleBtn) {
       toggleBtn.addEventListener("click", () => {
-        this.#showSaveInput = !this.#showSaveInput;
+        this.#shouldShowSaveInput = !this.#shouldShowSaveInput;
         this.#render();
-        // Auto-focus input if now visible
-        if (this.#showSaveInput) {
+        if (this.#shouldShowSaveInput) {
           const input = this.#container.querySelector("#preset-name-input");
           if (input) input.focus();
         }
       });
     }
 
-    // Save button
     const saveBtn = this.#container.querySelector("#preset-btn-save");
     if (saveBtn) {
       saveBtn.addEventListener("click", () => this.#handleSave());
     }
 
-    // Save on Enter key
     const nameInput = this.#container.querySelector("#preset-name-input");
     if (nameInput) {
       nameInput.addEventListener("keydown", (e) => {
         if (e.key === "Enter") this.#handleSave();
         if (e.key === "Escape") {
-          this.#showSaveInput = false;
+          this.#shouldShowSaveInput = false;
           this.#render();
         }
       });
     }
 
-    // Preset chips — delegate clicks
     const chips = this.#container.querySelectorAll("[data-action]");
     for (const el of chips) {
       el.addEventListener("click", (e) => {
@@ -188,7 +153,6 @@ export class PresetPickerComponent {
     }
   }
 
-  // ── Private: Action handlers ───────────────────────────────────
 
   #handleLoad(name) {
     const params = this.#manager.get(name);
@@ -209,8 +173,6 @@ export class PresetPickerComponent {
       return;
     }
 
-    // Request current params from app.js via EventBus
-    // We'll use a synchronous callback approach
     let currentParams = null;
     const handler = (params) => { currentParams = params; };
     this.#bus.on("preset:request-params-response", handler);
@@ -226,7 +188,7 @@ export class PresetPickerComponent {
     }
 
     this.#activePreset = name;
-    this.#showSaveInput = false;
+    this.#shouldShowSaveInput = false;
     this.#showToast(`✅  Preset "${name}" saved`);
     this.#render();
   }
@@ -238,7 +200,6 @@ export class PresetPickerComponent {
     navigator.clipboard.writeText(url).then(() => {
       this.#showToast("✅  Share link copied to clipboard!");
     }).catch(() => {
-      // Fallback: select and copy
       const input = document.createElement("input");
       input.value = url;
       document.body.appendChild(input);
@@ -260,7 +221,6 @@ export class PresetPickerComponent {
     this.#render();
   }
 
-  // ── Private: Toast ─────────────────────────────────────────────
 
   #createToast() {
     if (this.#toast) return;

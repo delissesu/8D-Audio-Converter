@@ -1,14 +1,5 @@
-// web/js/services/WaveformAnalyzer.js
-// Decodes audio file to raw PCM amplitude data for canvas rendering.
-// Used independently of AudioPlayerComponent for pre-decode if needed.
 
 export class WaveformAnalyzer {
-  /**
-   * Decode audio URL and return normalized amplitude samples.
-   * @param {string} url - Audio URL
-   * @param {number} samples - Number of data points to return
-   * @returns {Promise<Float32Array>} — amplitude values in [-1, 1]
-   */
   async analyze(url, samples = 800) {
     const response  = await fetch(url);
     const arrayBuf  = await response.arrayBuffer();

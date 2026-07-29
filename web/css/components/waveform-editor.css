@@ -1,7 +1,4 @@
-/* web/css/components/waveform-editor.css
-   Styles for the waveform trim editor. */
 
-/* ── Container ────────────────────────────────────────────────── */
 .waveform-editor {
   display: flex;
   flex-direction: column;
@@ -13,7 +10,6 @@
   box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.04);
 }
 
-/* ── Header ───────────────────────────────────────────────────── */
 .waveform-editor__header {
   display: flex;
   align-items: center;
@@ -47,7 +43,6 @@
   color: #0071E3;
 }
 
-/* ── Canvas wrapper ───────────────────────────────────────────── */
 .waveform-editor__canvas-wrap {
   position: relative;
   width: 100%;
@@ -65,7 +60,6 @@
   height: 100%;
 }
 
-/* ── Trim handles ─────────────────────────────────────────────── */
 .waveform-editor__handle {
   position: absolute;
   top: 0;
@@ -117,7 +111,6 @@
   box-shadow: 0 0 0 2px rgba(0, 113, 227, 0.3);
 }
 
-/* ── Gray overlays (trimmed-out regions) ──────────────────────── */
 .waveform-editor__overlay {
   position: absolute;
   top: 0;
@@ -135,7 +128,6 @@
   right: 0;
 }
 
-/* ── Time labels ──────────────────────────────────────────────── */
 .waveform-editor__times {
   display: flex;
   justify-content: space-between;

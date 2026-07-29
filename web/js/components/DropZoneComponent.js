@@ -1,4 +1,3 @@
-// web/js/components/DropZoneComponent.js
 import { Component } from "../core/Component.js";
 
 export class DropZoneComponent extends Component {

@@ -1,4 +1,3 @@
-// web/js/components/FormatPickerComponent.js
 import { Component } from "../core/Component.js";
 
 const FORMATS = ["mp3", "wav", "flac", "ogg"];

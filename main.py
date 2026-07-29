@@ -1,14 +1,4 @@
-#!/usr/bin/env python3
-"""
-8D Audio Converter CLI
-Convert any audio file to an immersive 8D audio experience.
 
-Usage:
-    python main.py input.mp3 output_8d.wav
-    python main.py input.mp3 output_8d.wav --speed 0.2 --room 0.5
-    python main.py input.mp3 --auto-output
-    python main.py input.mp3 --auto-output --format mp3
-"""
 
 import argparse
 import sys
@@ -17,13 +7,12 @@ import os
 
 from tqdm import tqdm
 
-from converter.core import convert_to_8d
-from converter.printer import OutputPrinter
-from converter.utils import get_output_path, SUPPORTED_OUTPUT_FORMATS, DEFAULT_PARAMS
-
+from domain.core import convert_to_8d
+from domain.printer import OutputPrinter
+from domain.utils import get_output_path, SUPPORTED_OUTPUT_FORMATS, DEFAULT_PARAMS
 
 def build_parser() -> argparse.ArgumentParser:
-    # HIG: Accessibility — help text uses plain English, no emoji
+
     parser: argparse.ArgumentParser = argparse.ArgumentParser(
         prog="8d-converter",
         description="Convert audio files to immersive 8D audio.",
@@ -43,7 +32,6 @@ Parameter guide:
         """,
     )
 
-    # Positional arguments
     parser.add_argument(
         "input",
         metavar="INPUT",
@@ -57,7 +45,6 @@ Parameter guide:
         help="Path for the output file. Omit if using --auto-output.",
     )
 
-    # Effect parameters
     fx_group = parser.add_argument_group("Effect Parameters")
     fx_group.add_argument(
         "--speed",
@@ -99,7 +86,6 @@ Parameter guide:
         help=f"Reverb high-frequency damping (default: {DEFAULT_PARAMS['damping']}).",
     )
 
-    # Output options
     out_group = parser.add_argument_group("Output Options")
     out_group.add_argument(
         "--auto-output",
@@ -128,25 +114,22 @@ Parameter guide:
 
     return parser
 
-
 def main() -> None:
     parser: argparse.ArgumentParser = build_parser()
     args: argparse.Namespace = parser.parse_args()
 
-    # HIG: Consistency — centralized output formatting
     printer: OutputPrinter = OutputPrinter(
         quiet=args.quiet,
         no_color=args.no_color,
     )
 
-    # Resolve output format and path
-    output_ext: str = ".wav"  # default
+    output_ext: str = ".wav"
 
     if args.format is not None:
-        # Explicit --format flag takes priority
+
         output_ext = f".{args.format}"
     elif args.output is not None:
-        # Infer from output filename extension
+
         ext: str = os.path.splitext(args.output)[1].lower()
         if ext in SUPPORTED_OUTPUT_FORMATS:
             output_ext = ext
@@ -156,20 +139,19 @@ def main() -> None:
         output_path = get_output_path(args.input, suffix="_8d", output_ext=output_ext)
     elif args.output is not None:
         output_path = args.output
-        # If --format given but output has wrong extension, override
+
         if args.format is not None and not output_path.lower().endswith(output_ext):
             output_path = os.path.splitext(output_path)[0] + output_ext
     else:
         parser.error(
             "Provide an OUTPUT path, or use --auto-output to generate one automatically."
         )
-        return  # unreachable but satisfies type checkers
+        return
 
-    # Run pipeline
     start_time = time.time()
     try:
         if args.quiet:
-            # Quiet mode: no progress bar
+
             convert_to_8d(
                 input_path=args.input,
                 output_path=output_path,
@@ -180,7 +162,7 @@ def main() -> None:
                 damping=args.damping,
             )
         else:
-            # Verbose mode: inject tqdm progress bar
+
             total_steps = 5
             with tqdm(total=total_steps, desc="Processing", unit="step") as pbar:
 
@@ -189,7 +171,7 @@ def main() -> None:
                     if step_idx > 0:
                         pbar.update(1)
                     if step_idx == total - 1:
-                        pbar.update(1)  # finish the bar
+                        pbar.update(1)
 
                 convert_to_8d(
                     input_path=args.input,
@@ -202,7 +184,6 @@ def main() -> None:
                     progress_callback=cli_callback,
                 )
 
-        # Print result
         size_mb: float = os.path.getsize(output_path) / (1024 * 1024)
         out_ext: str = os.path.splitext(output_path)[1].upper().lstrip(".")
         elapsed: float = time.time() - start_time
@@ -218,14 +199,13 @@ def main() -> None:
             )
 
     except (FileNotFoundError, ValueError) as exc:
-        # HIG: Consistency — errors always to stderr via printer
+
         printer.error(str(exc))
         sys.exit(1)
     except KeyboardInterrupt:
-        # HIG: Feedback — acknowledge cancellation, explain outcome
+
         printer.warning("Conversion cancelled.", hint="Output file was not saved.")
         sys.exit(130)
-
 
 if __name__ == "__main__":
     main()

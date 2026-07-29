@@ -1,9 +1,6 @@
-/* web/css/global.css */
-/* Global reset, body, animated background */
 
 @import "./tokens.css";
 
-/* ── Keyframes ──────────────────────────────────────────────────── */
 @keyframes mesh-move {
   0%   { background-position: 0% 50%; }
   50%  { background-position: 100% 50%; }
@@ -31,10 +28,8 @@
   100% { background-position: 200% center; }
 }
 
-/* ── Reset ─────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-/* ── Body + animated mesh background ───────────────────────────── */
 body {
   font-family       : var(--font-system);
   font-size         : var(--text-body);
@@ -42,7 +37,6 @@ body {
   min-height        : 100dvh;
   -webkit-font-smoothing: antialiased;
 
-  /* Animated mesh gradient background */
   background        : linear-gradient(
     -45deg,
     #e8ecf3, #dde8f8, #e8d8f5, #d8eef5
@@ -59,7 +53,6 @@ body {
   }
 }
 
-/* ── App layout shell ───────────────────────────────────────────── */
 .app-root {
   max-width     : 480px;
   margin        : 0 auto;
@@ -69,7 +62,6 @@ body {
   gap           : var(--space-5);
 }
 
-/* ── Header ─────────────────────────────────────────────────────── */
 .app-header {
   text-align    : center;
   padding       : var(--space-6) 0 var(--space-2);
@@ -87,7 +79,6 @@ body {
   letter-spacing: -0.03em;
   line-height   : 1.1;
 
-  /* Gradient text */
   background    : var(--gradient-purple);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -99,7 +90,6 @@ body {
   margin-top    : var(--space-2);
 }
 
-/* ── Section label ─────────────────────────────────────────────── */
 .section-label {
   font-size     : var(--text-footnote);
   font-weight   : var(--weight-semibold);
@@ -109,12 +99,10 @@ body {
   padding       : 0 var(--space-1);
 }
 
-/* ── Component enter animation ─────────────────────────────────── */
 .component-enter {
   animation: fade-slide-up var(--duration-enter) var(--ease-bounce);
 }
 
-/* ── Footer ─────────────────────────────────────────────────────── */
 .app-footer {
   text-align    : center;
   font-size     : var(--text-caption-1);

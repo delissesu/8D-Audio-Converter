@@ -1,4 +1,3 @@
-// web/js/components/AudioPlayerComponent.js
 import { Component } from "../core/Component.js";
 
 export class AudioPlayerComponent extends Component {
@@ -50,20 +49,13 @@ export class AudioPlayerComponent extends Component {
     });
   }
 
-  /**
-   * Load an audio URL into the player.
-   * Decodes the audio for waveform rendering AND sets up the <audio> element.
-   * @param {string} url - Audio file URL
-   */
   async load(url) {
     this.update({ loading: true });
 
-    // ── Create HTML5 audio element ──────────────────────────────
     this.#audio          = new Audio(url);
     this.#audio.crossOrigin = "anonymous";
     this.#audio.preload  = "auto";
 
-    // ── Setup Web Audio API for visualization ────────────────────
     this.#ctx      = new (window.AudioContext || window.webkitAudioContext)();
     this.#analyzer = this.#ctx.createAnalyser();
     this.#analyzer.fftSize = 256;
@@ -72,7 +64,6 @@ export class AudioPlayerComponent extends Component {
     source.connect(this.#analyzer);
     this.#analyzer.connect(this.#ctx.destination);
 
-    // ── Wait for metadata + draw static waveform ────────────────
     this.#audio.addEventListener("loadedmetadata", async () => {
       this.update({ duration: this.#audio.duration, loading: false });
       await this.#drawStaticWaveform(url);
@@ -102,7 +93,6 @@ export class AudioPlayerComponent extends Component {
     this.#startLiveVisualizer();
   }
 
-  // ── Draw static waveform from decoded audio data ─────────────
   async #drawStaticWaveform(url) {
     try {
       const response  = await fetch(url);
@@ -124,7 +114,6 @@ export class AudioPlayerComponent extends Component {
 
       ctx.clearRect(0, 0, W, H);
 
-      // Draw background waveform bars
       for (let i = 0; i < W; i++) {
         let min = 1, max = -1;
         for (let j = 0; j < step; j++) {
@@ -135,7 +124,6 @@ export class AudioPlayerComponent extends Component {
         const barH = Math.max(2, (max - min) * mid);
         const y    = mid - barH / 2;
 
-        // Gradient color per bar
         const grad = ctx.createLinearGradient(0, y, 0, y + barH);
         grad.addColorStop(0, "rgba(0, 122, 255, 0.8)");
         grad.addColorStop(1, "rgba(90, 200, 250, 0.6)");
@@ -145,7 +133,6 @@ export class AudioPlayerComponent extends Component {
 
       await decodeCtx.close();
     } catch (e) {
-      // Waveform draw failed — show fallback flat line
       this.#drawFlatLine();
     }
   }
@@ -164,7 +151,6 @@ export class AudioPlayerComponent extends Component {
     ctx.stroke();
   }
 
-  // ── Live frequency visualizer overlay during playback ────────
   #startLiveVisualizer() {
     const draw = () => {
       this.#rafId = requestAnimationFrame(draw);
@@ -212,7 +198,6 @@ export class AudioPlayerComponent extends Component {
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
   }
 
-  /** Cleanup on unmount */
   unmount() {
     if (this.#rafId)  cancelAnimationFrame(this.#rafId);
     if (this.#audio)  { this.#audio.pause(); this.#audio.src = ""; }

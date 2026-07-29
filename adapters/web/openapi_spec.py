@@ -1,5 +1,4 @@
-# adapters/web/openapi_spec.py
-# OpenAPI 3.0 descriptor for the REST API.
+
 
 OPENAPI_SPEC = {
     "openapi": "3.0.0",

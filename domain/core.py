@@ -7,14 +7,22 @@ import numpy as np
 import soundfile as sf
 from pydub import AudioSegment
 
-from converter.effects import apply_panning, apply_reverb, normalize_audio
-from converter.utils import (
+from domain.utils import (
     validate_input_file,
     validate_output_path,
     validate_param_range,
     get_export_format,
 )
 
+from infrastructure.audio.effects.rotate_8d_effect import Rotate8DEffect
+from infrastructure.audio.effects.reverb_effect import ReverbEffect
+
+
+def _normalize_audio(samples: np.ndarray) -> np.ndarray:
+    peak = float(np.max(np.abs(samples)))
+    if peak > 0:
+        return (samples / peak) * 0.99
+    return samples
 
 def convert_to_8d(
     input_path: str,
@@ -29,22 +37,7 @@ def convert_to_8d(
     trim_start: float = 0.0,
     trim_end: float = 0.0,
 ) -> None:
-    """
-    Full pipeline: load audio → apply effects → normalize → save.
 
-    Args:
-        input_path:  Source audio file (mp3/wav/flac/ogg/aac/m4a).
-        output_path: Destination audio file (.wav/.mp3/.flac/.ogg/.m4a).
-        pan_speed:   Panning oscillation speed in Hz (0.01–2.0).
-        pan_depth:   Panning intensity (0.0–1.0).
-        room_size:   Reverb room size (0.0–1.0).
-        wet_level:   Reverb wet mix (0.0–1.0).
-        damping:     Reverb damping (0.0–1.0).
-        progress_callback: Optional callback (step_idx, total_steps, step_name).
-        effect_chain: Optional list of IAudioEffect instances. If provided,
-                      these are used instead of the default panning+reverb.
-    """
-    # Validate inputs
     validate_input_file(input_path)
     validate_output_path(output_path)
     validate_param_range(pan_speed, "pan_speed", 0.01, 2.0)
@@ -53,7 +46,6 @@ def convert_to_8d(
     validate_param_range(wet_level, "wet_level", 0.0, 1.0)
     validate_param_range(damping, "damping", 0.0, 1.0)
 
-    # Build params dict for effect chain
     params: dict = {
         "pan_speed": pan_speed,
         "pan_depth": pan_depth,
@@ -62,7 +54,6 @@ def convert_to_8d(
         "damping": damping,
     }
 
-    # Determine steps — if effect chain provided, use effect names
     use_chain: bool = effect_chain is not None and len(effect_chain) > 0
 
     if use_chain:
@@ -92,21 +83,18 @@ def convert_to_8d(
 
     start_time: float = time.time()
 
-    # [1] Load audio
     _report(0)
     audio_segment: AudioSegment = AudioSegment.from_file(input_path)
 
-    # P2: Audio duration cap — prevent decompression bombs
     duration_sec = len(audio_segment) / 1000.0
-    if duration_sec > 600:  # 10 minutes
+    if duration_sec > 600:
         raise ValueError(
             f"Audio too long: {duration_sec:.0f}s (max 600s / 10 min).\n"
             f"    → Use a shorter audio file."
         )
 
-    audio_segment = audio_segment.set_channels(2)  # Force stereo
+    audio_segment = audio_segment.set_channels(2)
 
-    # Export to a temp WAV so soundfile can read it as numpy
     tmp_fd: int
     tmp_path: str
     tmp_fd, tmp_path = tempfile.mkstemp(suffix=".wav")
@@ -119,23 +107,15 @@ def convert_to_8d(
     finally:
         os.unlink(tmp_path)
 
-    # Ensure shape is (num_frames, 2)
     if samples.ndim == 1:
         samples = np.column_stack([samples, samples])
 
-    # Apply trim if specified
-    # Guard: trim_end=0 means "no trim" (use full file)
-    # Guard: trim_end must be strictly greater than trim_start
     total_dur = len(samples) / sr
     t_start = max(0.0, float(trim_start) if trim_start else 0.0)
     t_end_raw = float(trim_end) if trim_end else 0.0
 
-    # Normalize: 0 means end-of-file
     t_end = t_end_raw if t_end_raw > 0 else total_dur
 
-    # Determine if we should trim:
-    #   - at least 0.1s difference between start and end
-    #   - the selection must differ from the full file by at least 0.5s
     selection_dur = t_end - t_start
     should_trim = (
         t_end > t_start + 0.1
@@ -149,24 +129,23 @@ def convert_to_8d(
         if end_frame > start_frame:
             samples = samples[start_frame:end_frame]
 
-    # Apply effects
     if use_chain:
         for i, effect in enumerate(effect_chain):
             _report(i + 1)
             samples = effect.apply(samples, sr, params)
     else:
-        # Legacy path — direct function calls (backward compatible)
+
         _report(1)
-        samples = apply_panning(samples, sr, pan_speed, pan_depth)
+        rotate = Rotate8DEffect()
+        samples = rotate.apply(samples, sr, params)
 
         _report(2)
-        samples = apply_reverb(samples, sr, room_size, wet_level, damping)
+        reverb = ReverbEffect()
+        samples = reverb.apply(samples, sr, params)
 
-    # Normalize
     _report(len(steps) - 2)
-    samples = normalize_audio(samples)
+    samples = _normalize_audio(samples)
 
-    # Export to target format
     _report(len(steps) - 1)
     export_fmt: str = get_export_format(output_path)
 

@@ -1,43 +1,24 @@
-// web/js/components/WaveformEditorComponent.js
-// Full waveform display with draggable trim handles.
-// Emits "trim:changed" with { start, end } on EventBus.
 
 import { EventBus } from "../core/EventBus.js";
 
 export class WaveformEditorComponent {
-  /** @type {HTMLElement|null} */
   #container = null;
-  /** @type {EventBus} */
   #bus = null;
-  /** @type {HTMLCanvasElement|null} */
   #canvas = null;
-  /** @type {CanvasRenderingContext2D|null} */
   #ctx = null;
-  /** @type {Float32Array|null} */
   #peaks = null;
-  /** @type {number} */
   #duration = 0;
-  /** @type {number} */
   #trimStart = 0;
-  /** @type {number} */
   #trimEnd = 0;
-  /** @type {string|null} */
   #dragging = null; // "start" | "end" | "middle" | null
-  /** @type {number} */
   #draggingOffset = 0;
-  /** @type {boolean} */
-  #visible = false;
-  /** @type {AudioContext|null} */
+  #isVisible = false;
   #audioCtx = null;
 
   constructor() {
     this.#bus = EventBus.getInstance();
   }
 
-  /**
-   * Mount into a DOM container.
-   * @param {HTMLElement} container
-   */
   mount(container) {
     this.#container = container;
 
@@ -50,9 +31,6 @@ export class WaveformEditorComponent {
     });
   }
 
-  /**
-   * Clean up.
-   */
   unmount() {
     this.#reset();
     if (this.#audioCtx && this.#audioCtx.state !== "closed") {
@@ -63,13 +41,7 @@ export class WaveformEditorComponent {
     this.#container = null;
   }
 
-  /**
-   * Get current trim values in seconds.
-   * Returns { start: 0, end: 0 } when no trim is active (full file selected).
-   * @returns {{ start: number, end: number }}
-   */
   getTrimValues() {
-    // Guard: if no audio loaded, return zero trim (signals "no trim" to backend)
     if (!this.#duration || this.#duration === 0) {
       return { start: 0, end: 0 };
     }
@@ -77,7 +49,6 @@ export class WaveformEditorComponent {
     const start = this.#trimStart ?? 0;
     const end   = this.#trimEnd > 0 ? this.#trimEnd : this.#duration;
 
-    // If selection covers the entire file (within 0.1s tolerance), signal "no trim"
     const isFullFile = (
       Math.abs(start) < 0.1 &&
       Math.abs(end - this.#duration) < 0.1
@@ -90,13 +61,11 @@ export class WaveformEditorComponent {
     return { start, end };
   }
 
-  // ── Private ────────────────────────────────────────────────
 
   async #decodeAndRender(file) {
     if (!this.#container) return;
 
     try {
-      // Decode audio
       if (!this.#audioCtx || this.#audioCtx.state === "closed") {
         this.#audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       }
@@ -108,7 +77,6 @@ export class WaveformEditorComponent {
       this.#trimStart = 0;
       this.#trimEnd = this.#duration;
 
-      // Extract peaks
       const data = audioBuffer.getChannelData(0);
       const numPeaks = 200;
       const step = Math.ceil(data.length / numPeaks);
@@ -123,7 +91,7 @@ export class WaveformEditorComponent {
         this.#peaks[i] = max;
       }
 
-      this.#visible = true;
+      this.#isVisible = true;
       this.#renderUI();
       this.#drawWaveform();
       this.#emitTrim();
@@ -139,12 +107,12 @@ export class WaveformEditorComponent {
     this.#trimStart = 0;
     this.#trimEnd = 0;
     this.#dragging = null;
-    this.#visible = false;
+    this.#isVisible = false;
     if (this.#container) this.#container.innerHTML = "";
   }
 
   #renderUI() {
-    if (!this.#container || !this.#visible) return;
+    if (!this.#container || !this.#isVisible) return;
 
     this.#container.innerHTML = `
       <div class="waveform-editor">
@@ -210,7 +178,6 @@ export class WaveformEditorComponent {
       const barH = Math.max(2, peak * mid * 0.9);
       const x = i * barWidth;
 
-      // Color: selected region is blue, outside is gray
       const timePct = i / this.#peaks.length;
       const startPct = this.#trimStart / this.#duration;
       const endPct = this.#trimEnd / this.#duration;
@@ -233,7 +200,6 @@ export class WaveformEditorComponent {
 
     const middleRegion = this.#container.querySelector("#waveform-middle-region");
 
-    // Mouse/Touch drag
     const startDrag = (handleId) => (e) => {
       e.preventDefault();
       this.#dragging = handleId;
@@ -290,7 +256,6 @@ export class WaveformEditorComponent {
     middleRegion?.addEventListener("mousedown", startDrag("middle"));
     middleRegion?.addEventListener("touchstart", startDrag("middle"), { passive: false });
 
-    // Keyboard: arrow keys
     handleStart?.addEventListener("keydown", (e) => {
       if (e.key === "ArrowRight") {
         this.#trimStart = Math.min(this.#trimStart + 0.5, this.#trimEnd - 0.1);
@@ -311,7 +276,6 @@ export class WaveformEditorComponent {
       }
     });
 
-    // Reset button
     resetBtn?.addEventListener("click", () => {
       this.#trimStart = 0;
       this.#trimEnd = this.#duration;
@@ -383,11 +347,6 @@ export class WaveformEditorComponent {
     });
   }
 
-  /**
-   * Format seconds to MM:SS.s
-   * @param {number} sec
-   * @returns {string}
-   */
   #formatTime(sec) {
     if (sec < 0) sec = 0;
     const m = Math.floor(sec / 60);

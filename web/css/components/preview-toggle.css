@@ -1,7 +1,4 @@
-/* web/css/components/preview-toggle.css
-   Styles for the Preview Toggle button. */
 
-/* ── Preview toggle button ────────────────────────────────────── */
 .preview-toggle {
   display: flex;
   align-items: center;
@@ -38,7 +35,6 @@
   cursor: not-allowed;
 }
 
-/* ── Active state ─────────────────────────────────────────────── */
 .preview-toggle--active {
   background: #0071E3;
   border-color: #0071E3;
@@ -52,18 +48,15 @@
   color: #FFFFFF;
 }
 
-/* ── Icon ─────────────────────────────────────────────────────── */
 .preview-toggle__icon {
   font-size: 18px;
   transition: color 150ms ease;
 }
 
-/* ── Label ────────────────────────────────────────────────────── */
 .preview-toggle__label {
   white-space: nowrap;
 }
 
-/* ── Pulse indicator (active state) ───────────────────────────── */
 .preview-toggle__pulse {
   position: absolute;
   right: 16px;

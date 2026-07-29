@@ -1,4 +1,3 @@
-// web/js/components/ProgressComponent.js
 import { Component } from "../core/Component.js";
 
 export class ProgressComponent extends Component {

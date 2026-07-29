@@ -1,13 +1,10 @@
-# infrastructure/audio/effects/reverb_effect.py
-# Extracts the Pedalboard reverb from converter/effects.py.
+
 
 import numpy as np
 from pedalboard import Pedalboard, Reverb
 from application.ports.audio_effect_port import IAudioEffect
 
-
 class ReverbEffect(IAudioEffect):
-    """Reverb effect using Spotify Pedalboard."""
 
     @property
     def effect_id(self) -> str:
@@ -38,7 +35,6 @@ class ReverbEffect(IAudioEffect):
             ]
         )
 
-        # Pedalboard expects shape (channels, num_frames) — transpose in/out
         samples_t: np.ndarray = samples.T.astype(np.float32)
         effected_t: np.ndarray = board(samples_t, sample_rate)
 

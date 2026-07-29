@@ -1,4 +1,3 @@
-// web/js/components/ResultComponent.js
 import { Component } from "../core/Component.js";
 
 export class ResultComponent extends Component {
@@ -35,6 +34,5 @@ export class ResultComponent extends Component {
     this.$("#retryBtn")?.addEventListener("click", () => this.emit("app:reset"));
   }
 
-  /** Returns the slot element where AudioPlayerComponent will be mounted */
   get playerSlot() { return this.$("#audioPlayerSlot"); }
 }

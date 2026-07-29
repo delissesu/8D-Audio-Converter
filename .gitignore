@@ -36,3 +36,6 @@ Thumbs.db
 
 # Temp files
 /tmp/
+
+/*.md
+*.md

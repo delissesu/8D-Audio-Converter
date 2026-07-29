@@ -1,6 +1,3 @@
-// web/js/worklets/lfo_panner.worklet.js
-// Sample-accurate LFO panner matching the Python backend algorithm.
-// Uses equal-power panning: sin(2π × speed × sampleIndex / sr) → angle → cos/sin gains.
 
 class LFOPannerProcessor extends AudioWorkletProcessor {
   static get parameterDescriptors() {
@@ -29,7 +26,6 @@ class LFOPannerProcessor extends AudioWorkletProcessor {
     const blockSize = inLeft.length;
 
     for (let i = 0; i < blockSize; i++) {
-      // Read a-rate or k-rate parameter values
       const speed = parameters.panSpeed.length > 1
         ? parameters.panSpeed[i]
         : parameters.panSpeed[0];
@@ -37,10 +33,8 @@ class LFOPannerProcessor extends AudioWorkletProcessor {
         ? parameters.panDepth[i]
         : parameters.panDepth[0];
 
-      // Exact match of Python: sin(2π × speed × phase / sampleRate)
       const pan = Math.sin(2 * Math.PI * speed * this._phase / sampleRate) * depth;
 
-      // Equal-power pan — exact match of Python's angle-based formula
       const panPos = (pan + 1.0) / 2.0;
       const angle  = panPos * (Math.PI / 2.0);
       const leftGain  = Math.cos(angle);

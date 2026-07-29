@@ -1,7 +1,5 @@
-/* web/css/components/button.css */
 @import "../tokens.css";
 
-/* Shared base */
 .btn {
   display            : flex;
   align-items        : center;
@@ -23,7 +21,6 @@
 .btn:active:not(:disabled) { transform: scale(0.96); }
 .btn:disabled              { opacity: 0.3; cursor: not-allowed; }
 
-/* Primary (blue gradient) */
 .btn-primary {
   background         : var(--gradient-blue);
   color              : #fff;
@@ -34,7 +31,6 @@
   opacity            : 0.92;
 }
 
-/* Download (green gradient) */
 .btn-download {
   background         : var(--gradient-green);
   color              : #fff;
@@ -45,7 +41,6 @@
   opacity            : 0.92;
 }
 
-/* Ghost (secondary action) */
 .btn-ghost {
   background         : var(--fill-tertiary);
   color              : var(--label-primary);

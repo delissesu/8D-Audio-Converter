@@ -1,6 +1,3 @@
-// web/js/components/HistoryPanelComponent.js
-// Collapsible panel showing conversion history.
-// Uses EventBus for communication — listens to "conversion:complete".
 
 import { EventBus } from "../core/EventBus.js";
 import { HistoryManager } from "../services/HistoryManager.js";
@@ -24,28 +21,19 @@ function formatTimestamp(ts) {
 }
 
 export class HistoryPanelComponent {
-  /** @type {HTMLElement|null} */
   #container = null;
-  /** @type {HistoryManager} */
   #manager = null;
-  /** @type {EventBus} */
   #bus = null;
-  /** @type {boolean} */
-  #collapsed = true; // collapsed by default
+  #isCollapsed = true; // collapsed by default
 
   constructor() {
     this.#manager = new HistoryManager();
     this.#bus = EventBus.getInstance();
   }
 
-  /**
-   * Mount into a DOM container.
-   * @param {HTMLElement} container
-   */
   mount(container) {
     this.#container = container;
 
-    // Listen for new conversion completions
     this.#bus.on("conversion:complete", (entry) => {
       this.#manager.add(entry);
       this.#render();
@@ -54,15 +42,11 @@ export class HistoryPanelComponent {
     this.#render();
   }
 
-  /**
-   * Clean up.
-   */
   unmount() {
     if (this.#container) this.#container.innerHTML = "";
     this.#container = null;
   }
 
-  // ── Private ────────────────────────────────────────────────
 
   #render() {
     if (!this.#container) return;
@@ -75,11 +59,10 @@ export class HistoryPanelComponent {
       return;
     }
 
-    const chevron = this.#collapsed ? "expand_more" : "expand_less";
+    const chevron = this.#isCollapsed ? "expand_more" : "expand_less";
 
     let html = `<div class="history-panel">`;
 
-    // Header
     html += `
       <button id="history-toggle" class="history-panel__header">
         <div class="history-panel__header-left">
@@ -90,14 +73,13 @@ export class HistoryPanelComponent {
         <span class="material-symbols-outlined history-panel__chevron">${chevron}</span>
       </button>`;
 
-    // Collapsible body
-    if (!this.#collapsed) {
+    if (!this.#isCollapsed) {
       html += `<div class="history-panel__body">`;
 
       for (const entry of entries) {
-        const expired = entry.expired === true;
+        const isExpired = entry.expired === true;
         const hasValidUrl = entry.downloadUrl && !entry.downloadUrl.includes("undefined") && !entry.downloadUrl.includes("null");
-        const statusClass = expired || !hasValidUrl ? "history-item--expired" : "";
+        const statusClass = isExpired || !hasValidUrl ? "history-item--expired" : "";
 
         html += `
           <div class="history-item ${statusClass}">
@@ -137,26 +119,23 @@ export class HistoryPanelComponent {
   }
 
   #attachListeners() {
-    // Toggle collapse
     const toggleBtn = this.#container?.querySelector("#history-toggle");
     if (toggleBtn) {
       toggleBtn.addEventListener("click", () => {
-        this.#collapsed = !this.#collapsed;
+        this.#isCollapsed = !this.#isCollapsed;
         this.#render();
       });
     }
 
-    // Clear history
     const clearBtn = this.#container?.querySelector("#history-clear");
     if (clearBtn) {
       clearBtn.addEventListener("click", () => {
         this.#manager.clear();
-        this.#collapsed = true;
+        this.#isCollapsed = true;
         this.#render();
       });
     }
 
-    // Intercept download button clicks — fetch as blob to avoid saving JSON on error
     const downloadBtns = this.#container?.querySelectorAll(".btn-download-history") || [];
     for (const btn of downloadBtns) {
       btn.addEventListener("click", (e) => {
@@ -175,7 +154,6 @@ export class HistoryPanelComponent {
     if (!url || url.includes("undefined") || url.includes("null")) {
       btn.innerHTML = '<span style="font-size:12px">Expired</span>';
       btn.disabled = true;
-      // Mark entry expired in store
       const entries = this.#manager.getAll();
       const entry = entries.find(en => en.downloadUrl === url);
       if (entry) this.#manager.markExpired(entry.jobId);
@@ -188,7 +166,6 @@ export class HistoryPanelComponent {
     try {
       const res = await fetch(url);
 
-      // If server returned JSON instead of audio, it's an error
       const contentType = res.headers.get("Content-Type") ?? "";
       if (contentType.includes("application/json")) {
         const err = await res.json();
@@ -197,7 +174,6 @@ export class HistoryPanelComponent {
 
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-      // Stream the blob and trigger download
       const blob = await res.blob();
       const dlUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -220,7 +196,6 @@ export class HistoryPanelComponent {
       if (err.message.includes("expired") || err.message.includes("410")) {
         btn.innerHTML = '<span style="font-size:12px">Expired</span>';
         btn.disabled = true;
-        // Mark expired in store
         const entries = this.#manager.getAll();
         const entry = entries.find(en => en.downloadUrl === url);
         if (entry) this.#manager.markExpired(entry.jobId);

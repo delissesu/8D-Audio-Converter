@@ -1,9 +1,4 @@
-/* web/css/components/preset-picker.css
-   Styles for the PresetPickerComponent.
-   Uses Tailwind utility classes inline — this file provides
-   component-specific custom styles only. */
 
-/* ── Preset picker container ──────────────────────────────────── */
 .preset-picker {
   display: flex;
   flex-direction: column;
@@ -24,14 +19,12 @@
   color: #86868B;
 }
 
-/* ── Preset grid ─────────────────────────────────────────────── */
 .preset-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   gap: 8px;
 }
 
-/* ── Individual preset chip ──────────────────────────────────── */
 .preset-chip {
   display: flex;
   align-items: center;
@@ -91,7 +84,6 @@
   color: #0071E3;
 }
 
-/* ── Chip action buttons ─────────────────────────────────────── */
 .preset-chip__actions {
   display: flex;
   align-items: center;
@@ -131,7 +123,6 @@
   color: #FF3B30;
 }
 
-/* ── Save preset section ─────────────────────────────────────── */
 .preset-save-row {
   display: flex;
   gap: 8px;
@@ -200,7 +191,6 @@
   color: #1D1D1F;
 }
 
-/* ── Copied toast ────────────────────────────────────────────── */
 .preset-toast {
   position: fixed;
   bottom: 24px;
